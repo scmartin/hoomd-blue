@@ -668,14 +668,61 @@ class gauss(pair):
 
         hoomd.context.current.system.addCompute(self.cpp_force, self.force_name);
 
-        # setup the coefficient options
-        self.required_coeffs = ['epsilon', 'sigma'];
+        # setup the coefficent options
+        self.required_coeffs = ['epsilon', 'sigma', 'r_0'];
 
     def process_coeff(self, coeff):
         epsilon = coeff['epsilon'];
         sigma = coeff['sigma'];
+        r_0 = coeff['r_0'];
 
-        return _hoomd.make_scalar2(epsilon, sigma);
+        return _hoomd.make_scalar3(epsilon, sigma, r_0);
+
+    #get_shifted_rcut = shiftRcut(pair.get_rcut)
+    get_shifted_rcut = pair.get_rcut
+
+    def get_rcut(self):
+        originalRcut = self.get_shifted_rcut()
+
+        if originalRcut is None:
+            return None
+
+        r_cut = hoomd.md.nlist.rcut()
+        r_cut.merge(originalRcut)
+
+        for (i, j) in originalRcut.values:
+            r_0 = self.pair_coeff.get(i, j, 'r_0')
+            if r_0 is not None:
+                r_cut.set_pair(i, j, originalRcut.get_pair(i, j) + r_0)
+
+        return r_cut
+
+    def update_coeffs(self):
+        coeff_list = self.required_coeffs + ["r_cut", "r_on"];
+        # check that the pair coefficents are valid
+        if not self.pair_coeff.verify(coeff_list):
+            globals.msg.error("Not all pair coefficients are set\n");
+            raise RuntimeError("Error updating pair coefficients");
+
+        # set all the params
+        #ntypes = globals.system_definition.getParticleData().getNTypes();
+        ntypes = hoomd.context.current.system_definition.getParticleData().getNTypes();
+        type_list = [];
+        for i in range(0,ntypes):
+            type_list.append(hoomd.context.current.system_definition.getParticleData().getNameByType(i));
+
+        for i in range(0,ntypes):
+            for j in range(i,ntypes):
+                # build a dict of the coeffs to pass to process_coeff
+                coeff_dict = {};
+                for name in coeff_list:
+                    coeff_dict[name] = self.pair_coeff.get(type_list[i], type_list[j], name);
+
+                param = self.process_coeff(coeff_dict);
+                self.cpp_force.setParams(i, j, param);
+                self.cpp_force.setRcut(i, j, coeff_dict['r_cut'] + coeff_dict['r_0']);
+                self.cpp_force.setRon(i, j, coeff_dict['r_on'] + coeff_dict['r_0']);
+
 
 class slj(pair):
     R""" Shifted Lennard-Jones pair potential.

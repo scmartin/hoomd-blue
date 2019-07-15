@@ -47,7 +47,7 @@ class EvaluatorPairGauss
     {
     public:
         //! Define the parameter type used by this pair potential evaluator
-        typedef Scalar2 param_type;
+        typedef Scalar3 param_type;
 
         //! Constructs the pair potential evaluator
         /*! \param _rsq Squared distance between the particles
@@ -55,7 +55,7 @@ class EvaluatorPairGauss
             \param _params Per type pair parameters of this potential
         */
         DEVICE EvaluatorPairGauss(Scalar _rsq, Scalar _rcutsq, const param_type& _params)
-            : rsq(_rsq), rcutsq(_rcutsq), epsilon(_params.x), sigma(_params.y)
+            : rsq(_rsq), rcutsq(_rcutsq), epsilon(_params.x), sigma(_params.y), r_0(_params.z)
             {
             }
 
@@ -86,19 +86,24 @@ class EvaluatorPairGauss
         */
         DEVICE bool evalForceAndEnergy(Scalar& force_divr, Scalar& pair_eng, bool energy_shift)
             {
+            Scalar r = fast::sqrt(rsq);
+            Scalar shifted_r = r - r_0;
+            Scalar shifted_r_sq = shifted_r*shifted_r;
             // compute the force divided by r in force_divr
-            if (rsq < rcutsq)
+            if (shifted_r_sq < rcutsq)
                 {
                 Scalar sigma_sq = sigma*sigma;
-                Scalar r_over_sigma_sq = rsq / sigma_sq;
+                Scalar r_over_sigma_sq = shifted_r_sq / sigma_sq;
                 Scalar exp_val = fast::exp(-Scalar(1.0)/Scalar(2.0) * r_over_sigma_sq);
 
-                force_divr = epsilon / sigma_sq * exp_val;
+                force_divr = epsilon / sigma_sq * exp_val * shifted_r / r;
                 pair_eng = epsilon * exp_val;
 
                 if (energy_shift)
                     {
-                    pair_eng -= epsilon * fast::exp(-Scalar(1.0)/Scalar(2.0) * rcutsq / sigma_sq);
+                    Scalar shifted_rcut = fast::sqrt(rcutsq) - r_0;
+                    Scalar shifted_rcut_sq = shifted_rcut * shifted_rcut;
+                    pair_eng -= epsilon * fast::exp(-Scalar(1.0)/Scalar(2.0) * shifted_rcut_sq / sigma_sq);
                     }
                 return true;
                 }
@@ -122,6 +127,7 @@ class EvaluatorPairGauss
         Scalar rcutsq;  //!< Stored rcutsq from the constructor
         Scalar epsilon; //!< epsilon parameter extracted from the params passed to the constructor
         Scalar sigma;   //!< sigma parameter extracted from the params passed to the constructor
+        Scalar r_0;     //!< Radius shifting amount
     };
 
 

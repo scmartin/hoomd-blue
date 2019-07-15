@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2019 The Regents of the University of Michigan
+// Copyright (c) 2009-2016 The Regents of the University of Michigan
 // This file is part of the HOOMD-blue project, released under the BSD 3-Clause License.
 
 
@@ -28,9 +28,9 @@ using namespace std;
 /*! \param sysdef SystemDefinition containing the Particle data to analyze
     \param fname File name to write output to
     \param header_prefix String to print before the file header
-    \param overwrite Will overwrite an exiting file if true (default is to append)
+    \param overwrite Will overwite an exiting file if true (default is to append)
 
-    On construction, the initial coordinates of all particles in the system are recorded. The file is opened
+    On construction, the initial coordinates of all parrticles in the system are recoreded. The file is opened
     (and overwritten if told to). Nothing is initially written to the file, that will occur on the first call to
     analyze()
 */
@@ -291,7 +291,9 @@ Scalar MSDAnalyzer::calcMSD(std::shared_ptr<ParticleGroup const> group, const Sn
 
     // initial sum for the average
     Scalar msd = Scalar(0.0);
-
+    Scalar dx_sum = Scalar(0.0);
+    Scalar dy_sum = Scalar(0.0);
+    Scalar dz_sum = Scalar(0.0);
     // handle the case where there are 0 members gracefully
     if (group->getNumMembersGlobal() == 0)
         {
@@ -302,7 +304,6 @@ Scalar MSDAnalyzer::calcMSD(std::shared_ptr<ParticleGroup const> group, const Sn
     // for each particle in the group
     for (unsigned int group_idx = 0; group_idx < group->getNumMembersGlobal(); group_idx++)
         {
-        // get the tag for the current group member from the group
         unsigned int tag = group->getMemberTag(group_idx);
         assert(tag < snapshot.size);
         vec3<Scalar> pos = snapshot.pos[tag];
@@ -311,10 +312,22 @@ Scalar MSDAnalyzer::calcMSD(std::shared_ptr<ParticleGroup const> group, const Sn
         Scalar dx = unwrapped.x - m_initial_x[tag];
         Scalar dy = unwrapped.y - m_initial_y[tag];
         Scalar dz = unwrapped.z - m_initial_z[tag];
-
+        dx_sum += dx; // This is for considering whole movement of system itself
+        dy_sum += dy;
+        dz_sum += dz;
+        }
+    for (unsigned int group_idx = 0; group_idx < group->getNumMembersGlobal(); group_idx++)
+        {
+        unsigned int tag = group->getMemberTag(group_idx);
+        assert(tag < snapshot.size);
+        vec3<Scalar> pos = snapshot.pos[tag];
+        int3 image = snapshot.image[tag];
+        vec3<Scalar> unwrapped = box.shift(pos, image);
+        Scalar dx = unwrapped.x - m_initial_x[tag] - dx_sum/Scalar(group->getNumMembersGlobal());
+        Scalar dy = unwrapped.y - m_initial_y[tag] - dy_sum/Scalar(group->getNumMembersGlobal());
+        Scalar dz = unwrapped.z - m_initial_z[tag] - dz_sum/Scalar(group->getNumMembersGlobal());
         msd += dx*dx + dy*dy + dz*dz;
         }
-
     // divide to complete the average
     msd /= Scalar(group->getNumMembersGlobal());
     return msd;
@@ -351,7 +364,7 @@ void MSDAnalyzer::writeRow(unsigned int timestep, const SnapshotParticleData<Sca
     if (!m_file.good())
         {
         m_exec_conf->msg->error() << "analyze.msd: I/O error while writing file" << endl;
-        throw runtime_error("Error writing msd file");
+        throw runtime_error("Error writting msd file");
         }
 
     if (m_prof) m_prof->pop();
