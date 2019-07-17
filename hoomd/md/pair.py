@@ -678,25 +678,6 @@ class gauss(pair):
 
         return _hoomd.make_scalar3(epsilon, sigma, r_0);
 
-    #get_shifted_rcut = shiftRcut(pair.get_rcut)
-    get_shifted_rcut = pair.get_rcut
-
-    def get_rcut(self):
-        originalRcut = self.get_shifted_rcut()
-
-        if originalRcut is None:
-            return None
-
-        r_cut = hoomd.md.nlist.rcut()
-        r_cut.merge(originalRcut)
-
-        for (i, j) in originalRcut.values:
-            r_0 = self.pair_coeff.get(i, j, 'r_0')
-            if r_0 is not None:
-                r_cut.set_pair(i, j, originalRcut.get_pair(i, j) + r_0)
-
-        return r_cut
-
     def update_coeffs(self):
         coeff_list = self.required_coeffs + ["r_cut", "r_on"];
         # check that the pair coefficents are valid
