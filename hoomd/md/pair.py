@@ -672,6 +672,7 @@ class gauss(pair):
 
         # setup the coefficent options
         self.required_coeffs = ['epsilon', 'sigma', 'r_0'];
+        self.pair_coeff.set_default_coeff('r_0', 0.);
 
     def process_coeff(self, coeff):
         epsilon = coeff['epsilon'];
