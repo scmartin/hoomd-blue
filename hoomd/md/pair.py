@@ -623,7 +623,7 @@ class gauss(pair):
         :nowrap:
 
         \begin{eqnarray*}
-        V_{\mathrm{gauss}}(r)  = & \varepsilon \exp \left[ -\frac{1}{2}\left( \frac{r}{\sigma} \right)^2 \right]
+        V_{\mathrm{gauss}}(r)  = & \varepsilon \exp \left[ -\frac{1}{2}\left( \frac{r-r_0}{\sigma} \right)^2 \right]
                                                 & r < r_{\mathrm{cut}} \\
                                = & 0 & r \ge r_{\mathrm{cut}} \\
         \end{eqnarray*}
@@ -635,6 +635,8 @@ class gauss(pair):
 
     - :math:`\varepsilon` - *epsilon* (in energy units)
     - :math:`\sigma` - *sigma* (in distance units)
+    - :math:`r_{\mathrm{0}}` - *r_0* (in distance units)
+      - *optional*: defaults to zero
     - :math:`r_{\mathrm{cut}}` - *r_cut* (in distance units)
       - *optional*: defaults to the global r_cut specified in the pair command
     - :math:`r_{\mathrm{on}}`- *r_on* (in distance units)
