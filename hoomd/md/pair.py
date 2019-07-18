@@ -646,7 +646,7 @@ class gauss(pair):
 
         nl = nlist.cell()
         gauss = pair.gauss(r_cut=3.0, nlist=nl)
-        gauss.pair_coeff.set('A', 'A', epsilon=1.0, sigma=1.0)
+        gauss.pair_coeff.set('A', 'A', epsilon=1.0, sigma=1.0, r_0=1)
         gauss.pair_coeff.set('A', 'B', epsilon=2.0, sigma=1.0, r_cut=3.0, r_on=2.0);
         gauss.pair_coeff.set(['A', 'B'], ['C', 'D'], epsilon=3.0, sigma=0.5)
 
