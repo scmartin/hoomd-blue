@@ -86,12 +86,12 @@ class EvaluatorPairGauss
         */
         DEVICE bool evalForceAndEnergy(Scalar& force_divr, Scalar& pair_eng, bool energy_shift)
             {
-            Scalar r = fast::sqrt(rsq);
-            Scalar shifted_r = r - r_0;
-            Scalar shifted_r_sq = shifted_r*shifted_r;
             // compute the force divided by r in force_divr
-            if (shifted_r_sq < rcutsq)
+            if (rsq < rcutsq)
                 {
+                Scalar r = fast::sqrt(rsq);
+                Scalar shifted_r = r - r_0;
+                Scalar shifted_r_sq = shifted_r*shifted_r;
                 Scalar sigma_sq = sigma*sigma;
                 Scalar r_over_sigma_sq = shifted_r_sq / sigma_sq;
                 Scalar exp_val = fast::exp(-Scalar(1.0)/Scalar(2.0) * r_over_sigma_sq);
