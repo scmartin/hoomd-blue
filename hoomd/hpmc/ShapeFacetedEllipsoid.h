@@ -11,6 +11,8 @@
 #include "hoomd/AABB.h"
 #include "OBB.h"
 
+#include "ShapeEllipsoid.h"
+
 #ifndef __SHAPE_FACETED_SPHERE_H__
 #define __SHAPE_FACETED_SPHERE_H__
 
@@ -468,6 +470,63 @@ struct ShapeFacetedEllipsoid
     const param_type& params;           //!< Faceted sphere parameters
     };
 
+//! Specialization for a sphere intersecting a n=1 faceted ellipsoid
+DEVICE inline bool faceted_ellipsoid_0_1(const vec3<Scalar>& r_ab, const ShapeFacetedEllipsoid& a, const ShapeFacetedEllipsoid& b, unsigned int& err)
+    {
+    ShapeEllipsoid::param_type ell_params_a, ell_params_b;
+
+    ell_params_a.x = a.params.a; ell_params_a.y = a.params.b; ell_params_a.z = a.params.c;
+    ell_params_b.x = b.params.a; ell_params_b.y = b.params.b; ell_params_b.z = b.params.c;
+
+    ShapeEllipsoid ell_a(a.orientation, ell_params_a);
+    ShapeEllipsoid ell_b(b.orientation, ell_params_b);
+    if (test_overlap(r_ab, ell_a, ell_b, err))
+        {
+        // full shapes overlap, check SAT for cut planes
+        if (a.params.N == 0 && a.params.a == a.params.b && a.params.a == a.params.c && b.params.N == 1)
+            {
+            // put a in coordinate system of b
+            vec3<OverlapReal> dr(rotate(conj(b.orientation),-r_ab));
+
+            vec3<OverlapReal> n(b.params.n[0]);
+            OverlapReal r = fast::rsqrt(dot(n,n))*(dot(dr, n) + b.params.offset[0]);
+            if (r > 0)
+                {
+                // center of sphere is outside facet, test if sphere straddles facet
+                return r <= a.params.a;
+                }
+            else
+                {
+                return true;
+                }
+            }
+        else if (a.params.N == 1 && b.params.N == 0 && b.params.a == b.params.b && b.params.a == b.params.c)
+            {
+            // put b in coordinate system of a
+            vec3<OverlapReal> dr(rotate(conj(a.orientation),r_ab));
+
+            vec3<OverlapReal> n(a.params.n[0]);
+            OverlapReal r = fast::rsqrt(dot(n,n))*(dot(dr, n) + a.params.offset[0]);
+            if (r > 0)
+                {
+                // center of sphere is outside facet, test if sphere straddles facet
+                return r <= b.params.a;
+                }
+            else
+                {
+                return true;
+                }
+            }
+        else
+            {
+            err++;
+            return true;
+            }
+        }
+    else
+        return false;
+    }
+
 //! Overlap of faceted spheres
 /*! \param r_ab Vector defining the position of shape b relative to shape a (r_b - r_a)
     \param a first shape
@@ -483,6 +542,13 @@ DEVICE inline bool test_overlap<ShapeFacetedEllipsoid, ShapeFacetedEllipsoid>(co
     unsigned int& err, Scalar sweep_radius_a, Scalar sweep_radius_b)
     {
     vec3<OverlapReal> dr(r_ab);
+
+    // special case: n=1 faceted ellipsoid vs. sphere
+    if ((a.params.N == 0 && a.params.a == a.params.b && a.params.a == a.params.c && b.params.N == 1) ||
+        (a.params.N == 1 && b.params.N == 0 && b.params.a == b.params.b && b.params.a == b.params.c))
+        {
+        return faceted_ellipsoid_0_1(r_ab, a, b, err);
+        }
 
     OverlapReal DaDb = a.getCircumsphereDiameter() + b.getCircumsphereDiameter();
     return detail::xenocollide_3d(detail::SupportFuncFacetedEllipsoid(a.params, sweep_radius_a),
