@@ -349,7 +349,7 @@ struct ShapeFacetedEllipsoid
     //! Returns true if the overlap check supports sweeping both shapes by a sphere of given radius
     HOSTDEVICE static bool supportsSweepRadius()
         {
-        return true;
+        return false;
         }
 
     /*!
