@@ -329,7 +329,7 @@ class IntegratorHPMCMono : public IntegratorHPMC
         void connectGSDShapeSpec(std::shared_ptr<GSDDumpWriter> writer);
 
         //! Method that is called to connect to the gsd write state signal
-        bool restoreStateGSD(std::shared_ptr<GSDReader> reader, std::string name);
+        void restoreStateGSD(std::shared_ptr<GSDReader> reader, std::string name);
 
         std::vector<std::string> getTypeShapeMapping(const std::vector<param_type, managed_allocator<param_type> > &params) const
             {
@@ -1756,9 +1756,8 @@ int IntegratorHPMCMono<Shape>::slotWriteGSDShapeSpec(gsd_handle& handle) const
     }
 
 template <class Shape>
-bool IntegratorHPMCMono<Shape>::restoreStateGSD( std::shared_ptr<GSDReader> reader, std::string name)
+void IntegratorHPMCMono<Shape>::restoreStateGSD( std::shared_ptr<GSDReader> reader, std::string name)
     {
-    bool success = true;
     m_exec_conf->msg->notice(10) << "IntegratorHPMCMono from GSD File to name: "<< name << std::endl;
     uint64_t frame = reader->getFrame();
     // create schemas
@@ -1778,7 +1777,6 @@ bool IntegratorHPMCMono<Shape>::restoreStateGSD( std::shared_ptr<GSDReader> read
         schema.read(reader, frame, "state/hpmc/integrate/a", m_pdata->getNTypes(), h_a.data, GSD_TYPE_DOUBLE);
         }
     schema_shape.read(reader, frame, name, m_pdata->getNTypes(), m_params);
-    return success;
     }
 
 template<class Shape>

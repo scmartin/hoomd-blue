@@ -48,14 +48,16 @@ struct gsd_schema_hpmc : public gsd_schema_hpmc_base
         }
 
     template<class T>
-    bool read(std::shared_ptr<GSDReader> reader, uint64_t frame, const std::string& name, unsigned int Ntypes, T* const data, gsd_type type)
+    void read(std::shared_ptr<GSDReader> reader, uint64_t frame, const std::string& name, unsigned int Ntypes, T* const data, gsd_type type)
         {
-        bool success = true;
         std::vector<T> d;
         if(m_exec_conf->isRoot())
             {
             d.resize(Ntypes);
-            success = reader->readChunk((void *) &d[0], frame, name.c_str(), Ntypes*gsd_sizeof_type(type), Ntypes) && success;
+            if(!reader->readChunk((void *) &d[0], frame, name.c_str(), Ntypes*gsd_sizeof_type(type), Ntypes) || !d.size())
+                {
+                throw std::runtime_error("Error occurred while attempting to restore from gsd file.");
+                }
             }
     #ifdef ENABLE_MPI
         if(m_mpi)
@@ -63,13 +65,10 @@ struct gsd_schema_hpmc : public gsd_schema_hpmc_base
             bcast(d, 0, m_exec_conf->getMPICommunicator()); // broadcast the data
             }
     #endif
-        if(!d.size())
-            throw std::runtime_error("Error occurred while attempting to restore from gsd file.");
         for(unsigned int i = 0; i < Ntypes; i++)
             {
             data[i] = d[i];
             }
-        return success;
         }
     };
 
@@ -83,10 +82,9 @@ struct gsd_shape_schema : public gsd_schema_hpmc_base
         throw std::runtime_error("This is not implemented");
         return 0;
         }
-    bool read(std::shared_ptr<GSDReader>, uint64_t, const std::string&, unsigned int, param_array<T>&)
+    void read(std::shared_ptr<GSDReader>, uint64_t, const std::string&, unsigned int, param_array<T>&)
         {
         throw std::runtime_error("This is not implemented");
-        return false;
         }
     };
 
