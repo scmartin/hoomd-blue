@@ -45,22 +45,22 @@
 
     is calculated to enforce close to zero value at r_cut
 
-    The Fourier potential does not need diameter or charge. two sets of parameters: a and b (both list of size 3) are specified and stored in a pair_fourier_params type.
+    The Fourier potential does not need diameter or charge. two sets of parameters: a and b (both list of size 8) are specified and stored in a pair_fourier_params type.
     - \a a is placed in params.a,
     - \a b is placed in params.b.
 
 */
 struct pair_fourier_params
 {
-  Scalar a[3];      //!< Fourier component coefficents
-  Scalar b[3];      //!< Fourier component coefficents
+  Scalar a[8];      //!< Fourier component coefficents
+  Scalar b[8];      //!< Fourier component coefficents
 };
 
 class EvaluatorPairFourier
     {
     public:
         //! Define the parameter type used by this pair potential evaluator
-        typedef pair_fourier_params param_type; //first try a 4th order fourier expression of potential
+        typedef pair_fourier_params param_type; //first try a 9th order fourier expression of potential
         //! Constructs the pair potential evaluator
         /*! \param _rsq Squared distance beteen the particles
             \param _rcutsq Sqauared distance at which the potential goes to 0
@@ -105,7 +105,7 @@ class EvaluatorPairFourier
             if (rsq < rcutsq)
                 {
                 Scalar half_period = fast::sqrt(rcutsq);
-		Scalar period_scale = M_PI / half_period;
+                Scalar period_scale = M_PI / half_period;
                 Scalar r = fast::sqrt(rsq);
                 Scalar x = r * period_scale;
                 Scalar r1inv = Scalar(1)/r;
@@ -114,10 +114,12 @@ class EvaluatorPairFourier
                 Scalar r12inv = r3inv * r3inv * r3inv * r3inv;
                 Scalar a1 = 0;
                 Scalar b1 = 0;
-                for (int i=2; i<5; i++)
+                const int DEGREE = 9;
+                for (int i=2; i<=DEGREE; i++)
                     {
                     a1 = a1 + fast::pow(Scalar(-1),Scalar(i)) * params.a[i-2];
-                    b1 = b1 + i * fast::pow(Scalar(-1),Scalar(i)) * params.b[i-2];
+                    // b1 = b1 + i * fast::pow(Scalar(-1),Scalar(i)) * params.b[i-2];
+                    // try to mute b1 constraint for force=0 at cutoff
                     }
                 Scalar theta = x;
                 Scalar s;
@@ -126,7 +128,7 @@ class EvaluatorPairFourier
                 Scalar fourier_part = a1 * c + b1 * s;
                 force_divr = a1 * s - b1 * c;
 
-                for (int i=2; i<5; i++)
+                for (int i=2; i<=DEGREE; i++)
                     {
                     theta = Scalar(i) * x;
                     fast::sincos(theta, s, c);
