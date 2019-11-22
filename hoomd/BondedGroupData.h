@@ -34,7 +34,7 @@ const unsigned int GROUP_NOT_LOCAL ((unsigned int) 0xffffffff);
 #include <hoomd/extern/nano-signal-slot/nano_signal_slot.hpp>
 #include <memory>
 #ifndef NVCC
-#include <hoomd/extern/pybind/include/pybind11/pybind11.h>
+#include <pybind11/pybind11.h>
 #endif
 
 #include <stack>
@@ -160,6 +160,11 @@ class BondedGroupData
             Snapshot(unsigned int n_groups)
                 {
                 resize(n_groups);
+                }
+
+            unsigned int getSize()
+                {
+                return size;
                 }
 
             //! Resize the snapshot
@@ -308,6 +313,17 @@ class BondedGroupData
 
         //! Get the type name by id
         const std::string getNameByType(unsigned int type) const;
+
+        //! Get the types for python
+        pybind11::list getTypesPy()
+            {
+            pybind11::list types;
+
+            for (unsigned int i = 0; i < getNTypes(); i++)
+                types.append(pybind11::str(m_type_mapping[i]));
+
+            return types;
+            }
 
         //! Rename a type
         void setTypeName(unsigned int type, const std::string& new_name);

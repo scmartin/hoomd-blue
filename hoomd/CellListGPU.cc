@@ -46,7 +46,6 @@ void CellListGPU::computeCellList()
     BoxDim box = m_pdata->getBox();
     unsigned int ngpu = m_exec_conf->getNumActiveGPUs();
 
-
         {
         // access the cell list data arrays
         ArrayHandle<unsigned int> d_cell_size(m_cell_size, access_location::device, access_mode::overwrite);
@@ -140,13 +139,13 @@ void CellListGPU::computeCellList()
             ScopedAllocation<Scalar4> d_tdb_new(m_exec_conf->getCachedAllocator(), m_tdb.getNumElements());
 
             gpu_sort_cell_list((ngpu == 1 && !m_per_device) ? d_cell_size.data : d_cell_size_scratch.data + i*m_cell_indexer.getNumElements(),
-                               (ngpu == 1 && !m_per_device) ? d_xyzf.data : d_xyzf_scratch.data + i*m_cell_list_indexer.getNumElements(),
+                               ((ngpu == 1 && !m_per_device) || !d_xyzf.data) ? d_xyzf.data : d_xyzf_scratch.data + i*m_cell_list_indexer.getNumElements(),
                                d_xyzf_new.data,
-                               (ngpu == 1 && !m_per_device) ? d_tdb.data : d_tdb_scratch.data + i*m_cell_list_indexer.getNumElements(),
+                               ((ngpu == 1 && !m_per_device) || !d_tdb.data) ? d_tdb.data : d_tdb_scratch.data + i*m_cell_list_indexer.getNumElements(),
                                d_tdb_new.data,
-                               (ngpu == 1 && !m_per_device) ? d_cell_orientation.data : d_cell_orientation_scratch.data + i*m_cell_list_indexer.getNumElements(),
+                               ((ngpu == 1 && !m_per_device) || !d_cell_orientation.data) ? d_cell_orientation.data : d_cell_orientation_scratch.data + i*m_cell_list_indexer.getNumElements(),
                                d_cell_orientation_new.data,
-                               (ngpu == 1 && !m_per_device) ? d_cell_idx.data : d_cell_idx_scratch.data + i*m_cell_list_indexer.getNumElements(),
+                               ((ngpu == 1 && !m_per_device) || !d_cell_idx.data) ? d_cell_idx.data : d_cell_idx_scratch.data + i*m_cell_list_indexer.getNumElements(),
                                d_cell_idx_new.data,
                                d_sort_idx.data,
                                d_sort_permutation.data,
@@ -348,7 +347,7 @@ void CellListGPU::initializeMemory()
 
 void export_CellListGPU(py::module& m)
     {
-    py::class_<CellListGPU, std::shared_ptr<CellListGPU> >(m,"CellListGPU",py::base<CellList>())
+    py::class_<CellListGPU, CellList, std::shared_ptr<CellListGPU> >(m,"CellListGPU")
     .def(py::init< std::shared_ptr<SystemDefinition> >())
         ;
     }

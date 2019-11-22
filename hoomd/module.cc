@@ -36,6 +36,7 @@
 #include "SFCPackUpdater.h"
 #include "BoxResizeUpdater.h"
 #include "System.h"
+#include "Trigger.h"
 #include "Variant.h"
 #include "Messenger.h"
 #include "SnapshotSystemData.h"
@@ -66,8 +67,8 @@
 
 #include "HOOMDVersion.h"
 
-#include <hoomd/extern/pybind/include/pybind11/pybind11.h>
-#include <hoomd/extern/pybind/include/pybind11/stl_bind.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl_bind.h>
 
 #include <iostream>
 #include <sstream>
@@ -81,15 +82,6 @@ using namespace std;
 /*! \file hoomd_module.cc
     \brief Brings all of the export_* functions together to export the hoomd python module
 */
-
-/* numpy is terrible (see /opt/local/Library/Frameworks/Python.framework/Versions/2.7/
-lib/python2.7/site-packages/numpy/core/generate_numpy_array.py)
-The following #defines help get around this
-*/
-
-#if (PYBIND11_VERSION_MAJOR) != 2 || (PYBIND11_VERSION_MINOR) != 2
-#error HOOMD-blue requires pybind11 2.2.x
-#endif
 
 //! Method for getting the current version of HOOMD
 /*! \returns Current HOOMD version identification string
@@ -156,6 +148,17 @@ bool is_MPI_available()
    {
    return
 #ifdef ENABLE_MPI
+       true;
+#else
+       false;
+#endif
+    }
+
+//! Determine availability of CUDA support
+bool isCUDAAvailable()
+   {
+   return
+#ifdef ENABLE_CUDA
        true;
 #else
        false;
@@ -247,14 +250,14 @@ void finalize_mpi()
 #endif
 
 //! Abort MPI runs
-void abort_mpi(std::shared_ptr<ExecutionConfiguration> exec_conf)
+void abort_mpi(std::shared_ptr<MPIConfiguration> mpi_conf, int errorcode)
     {
     #ifdef ENABLE_MPI
-    if(exec_conf->getMPIConfig()->getNRanksGlobal() > 1)
+    if(mpi_conf->getNRanksGlobal() > 1)
         {
         // delay for a moment to give time for error messages to print
         Sleep(1000);
-        MPI_Abort(exec_conf->getMPICommunicator(), MPI_ERR_OTHER);
+        MPI_Abort(mpi_conf->getCommunicator(), errorcode);
         }
     #endif
     }
@@ -311,6 +314,7 @@ PYBIND11_MODULE(_hoomd, m)
 
     m.def("is_MPI_available", &is_MPI_available);
     m.def("is_TBB_available", &is_TBB_available);
+    m.def("isCUDAAvailable", &isCUDAAvailable);
 
     pybind11::bind_vector< std::vector<Scalar> >(m,"std_vector_scalar");
     pybind11::bind_vector< std::vector<string> >(m,"std_vector_string");
@@ -393,6 +397,9 @@ PYBIND11_MODULE(_hoomd, m)
 
     // system
     export_System(m);
+
+    // trigger
+    export_Trigger(m);
 
     // variant
     export_Variant(m);

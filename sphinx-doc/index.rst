@@ -88,6 +88,7 @@ containers).
     :caption: Getting started
 
     installation
+    migrating
     changelog
     command-line-options
 
@@ -119,10 +120,15 @@ containers).
    :maxdepth: 3
    :caption: Additional Python packages
 
-   package-cgcmm
-   package-deprecated
    package-jit
    package-metal
+
+.. toctree::
+    :maxdepth: 3
+    :caption: Developer guide
+
+    style
+    testing
 
 .. toctree::
    :maxdepth: 3

@@ -18,7 +18,7 @@
 #include "VirtualParticleFiller.h"
 #include "SlitPoreGeometry.h"
 
-#include "hoomd/extern/pybind/include/pybind11/pybind11.h"
+#include <pybind11/pybind11.h>
 
 namespace mpcd
 {

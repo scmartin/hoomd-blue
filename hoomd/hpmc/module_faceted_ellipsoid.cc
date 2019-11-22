@@ -4,7 +4,6 @@
 // Include the defined classes that are to be exported to python
 #include "IntegratorHPMC.h"
 #include "IntegratorHPMCMono.h"
-#include "IntegratorHPMCMonoImplicit.h"
 #include "ComputeFreeVolume.h"
 
 #include "ShapeFacetedEllipsoid.h"
@@ -19,14 +18,10 @@
 #include "UpdaterExternalFieldWall.h"
 #include "UpdaterRemoveDrift.h"
 #include "UpdaterMuVT.h"
-#include "UpdaterMuVTImplicit.h"
 #include "UpdaterClusters.h"
-#include "UpdaterClustersImplicit.h"
 
 #ifdef ENABLE_CUDA
 #include "IntegratorHPMCMonoGPU.h"
-#include "IntegratorHPMCMonoImplicitGPU.h"
-#include "IntegratorHPMCMonoImplicitNewGPU.h"
 #include "ComputeFreeVolumeGPU.h"
 #endif
 
@@ -45,13 +40,10 @@ namespace hpmc
 void export_faceted_ellipsoid(py::module& m)
     {
     export_IntegratorHPMCMono< ShapeFacetedEllipsoid >(m, "IntegratorHPMCMonoFacetedEllipsoid");
-    export_IntegratorHPMCMonoImplicit< ShapeFacetedEllipsoid >(m, "IntegratorHPMCMonoImplicitFacetedEllipsoid");
     export_ComputeFreeVolume< ShapeFacetedEllipsoid >(m, "ComputeFreeVolumeFacetedEllipsoid");
     export_AnalyzerSDF< ShapeFacetedEllipsoid >(m, "AnalyzerSDFFacetedEllipsoid");
     export_UpdaterMuVT< ShapeFacetedEllipsoid >(m, "UpdaterMuVTFacetedEllipsoid");
     export_UpdaterClusters< ShapeFacetedEllipsoid >(m, "UpdaterClustersFacetedEllipsoid");
-    export_UpdaterClustersImplicit< ShapeFacetedEllipsoid, IntegratorHPMCMonoImplicit<ShapeFacetedEllipsoid> >(m, "UpdaterClustersImplicitFacetedEllipsoid");
-    export_UpdaterMuVTImplicit< ShapeFacetedEllipsoid, IntegratorHPMCMonoImplicit<ShapeFacetedEllipsoid> >(m, "UpdaterMuVTImplicitFacetedEllipsoid");
 
     export_ExternalFieldInterface<ShapeFacetedEllipsoid>(m, "ExternalFieldFacetedEllipsoid");
     export_LatticeField<ShapeFacetedEllipsoid>(m, "ExternalFieldLatticeFacetedEllipsoid");
@@ -63,8 +55,6 @@ void export_faceted_ellipsoid(py::module& m)
 
     #ifdef ENABLE_CUDA
     export_IntegratorHPMCMonoGPU< ShapeFacetedEllipsoid >(m, "IntegratorHPMCMonoGPUFacetedEllipsoid");
-    export_IntegratorHPMCMonoImplicitGPU< ShapeFacetedEllipsoid >(m, "IntegratorHPMCMonoImplicitGPUFacetedEllipsoid");
-    export_IntegratorHPMCMonoImplicitNewGPU< ShapeFacetedEllipsoid >(m, "IntegratorHPMCMonoImplicitNewGPUFacetedEllipsoid");
     export_ComputeFreeVolumeGPU< ShapeFacetedEllipsoid >(m, "ComputeFreeVolumeGPUFacetedEllipsoid");
     #endif
     }

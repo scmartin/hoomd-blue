@@ -47,10 +47,85 @@ struct sphinx3d_params : param_base
     unsigned int ignore;    //!< 0: Process overlaps - if (a.ignore == True) and (b.ignore == True) then test_overlap(a,b) = False
 
     #ifdef ENABLE_CUDA
-    //! Attach managed memory to CUDA stream
-    void attach_to_stream(cudaStream_t stream) const
+    //! Set CUDA memory hints
+    void set_memory_hint() const
         {
         // default implementation does nothing
+        }
+    #endif
+
+    #ifndef NVCC
+    sphinx3d_params() { }
+
+    sphinx3d_params(pybind11::dict v)
+        {
+        pybind11::list centers = v["centers"];
+        pybind11::list diameters = v["diameters"];
+        ignore = v["ignore_statistics"].cast<unsigned int>();
+
+
+        N = pybind11::len(diameters);
+        unsigned int N_centers = pybind11::len(centers);
+
+        if (N_centers > MAX_SPHERE_CENTERS)
+            throw std::runtime_error("Too many spheres");
+
+        if (N != N_centers)
+            {
+            throw std::runtime_error("Number of centers not equal to number of diameters");
+            }
+
+        OverlapReal radius = OverlapReal(0.0);
+        for (unsigned int i = 0; i < N_centers; i++)
+            {
+            pybind11::list center_i = centers[i];
+
+            OverlapReal center_x = center_i[0].cast<OverlapReal>();
+            OverlapReal center_y = center_i[1].cast<OverlapReal>();
+            OverlapReal center_z = center_i[2].cast<OverlapReal>();
+
+            vec3<OverlapReal> center_vec;
+            center_vec.x = center_x;
+            center_vec.y = center_y;
+            center_vec.z = center_z;
+
+            center[i] = center_vec;
+
+            OverlapReal d = diameters[i].cast<OverlapReal>();
+            diameter[i] = d;
+
+            OverlapReal n = sqrt(center_x*center_x + center_y*center_y + center_z*center_z);
+            radius = max(radius, (n+d/OverlapReal(2.0)));
+            }
+
+        // set the diameter
+        circumsphereDiameter = 2.0*radius;
+
+        }
+
+    pybind11::dict asDict()
+        {
+        pybind11::list centers;
+        pybind11::dict v;
+        pybind11::list diameters;
+        for (unsigned int i = 0; i < N; i++)
+            {
+            vec3<OverlapReal> center_i = center[i];
+            OverlapReal x = center_i.x;
+            OverlapReal y = center_i.y;
+            OverlapReal z = center_i.z;
+            pybind11::list xyz;
+            xyz.append(x);
+            xyz.append(y);
+            xyz.append(z);
+            pybind11::tuple xyz_tuple = pybind11::tuple(xyz);
+            centers.append(xyz_tuple);
+            diameters.append(diameter[i]);
+            }
+        v["diameters"] = diameters;
+        v["centers"] = centers;
+        v["ignore_statistics"] = ignore;
+        return v;
         }
     #endif
     } __attribute__((aligned(32)));
@@ -143,11 +218,24 @@ struct ShapeSphinx
         return detail::AABB(pos, getCircumsphereDiameter()/Scalar(2.0));
         }
 
+    //! Return a tight fitting OBB
+    DEVICE detail::OBB getOBB(const vec3<Scalar>& pos) const
+        {
+        // just use the AABB for now
+        return detail::OBB(getAABB(pos));
+        }
+
     //!Ignore flag for acceptance statistics
     DEVICE bool ignoreStatistics() const { return spheres.ignore; }
 
     //!Ignore flag for overlaps
     HOSTDEVICE static bool isParallel() {return false; }
+
+    //! Retrns true if the overlap check supports sweeping both shapes by a sphere of given radius
+    HOSTDEVICE static bool supportsSweepRadius()
+        {
+        return false;
+        }
 
     quat<Scalar> orientation;                   //!< Orientation of the sphinx
 
@@ -167,28 +255,12 @@ struct ShapeSphinx
     const detail::sphinx3d_params& spheres;     //!< Vertices
     };
 
-//! Check if circumspheres overlap
-/*! \param r_ab Vector defining the position of shape b relative to shape a (r_b - r_a)
-    \param a first shape
-    \param b second shape
-    \returns true if the circumspheres of both shapes overlap
-
-    \ingroup shape
-*/
-DEVICE inline bool check_circumsphere_overlap(const vec3<Scalar>& r_ab, const ShapeSphinx& a,
-    const ShapeSphinx &b)
-    {
-    OverlapReal DaDb = a.getCircumsphereDiameter() + b.getCircumsphereDiameter();
-    vec3<OverlapReal> dr(r_ab);
-
-    return (dot(dr,dr) <= DaDb*DaDb/OverlapReal(4.0));
-    }
-
-
 template <>
 DEVICE inline bool test_overlap<ShapeSphinx,ShapeSphinx>(const vec3<Scalar>& r_ab,
                                                           const ShapeSphinx& p,
-                                                          const ShapeSphinx& q, unsigned int& err)
+                                                          const ShapeSphinx& q, unsigned int& err,
+                                                          Scalar sweep_radius_a,
+                                                          Scalar sweep_radius_b)
     {
     vec3<OverlapReal> pv[detail::MAX_SPHERE_CENTERS];           //!< rotated centers of p
     vec3<OverlapReal> qv[detail::MAX_SPHERE_CENTERS];           //!< rotated centers of q

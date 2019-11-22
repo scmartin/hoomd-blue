@@ -61,17 +61,6 @@ endmacro(add_hoomd_script_test_mpi)
 #############################
 # macro for adding hoomd script tests (with cuda-memcheck)
 if(ENABLE_CUDA)
-
-# cuda-memcheck executable
-find_program(CUDA_MEMCHECK_EXECUTABLE
-  NAMES cuda-memcheck
-  PATHS "${CUDA_TOOLKIT_ROOT_DIR}/bin"
-        "${CUDA_TOOLKIT_ROOT_DIR}/bin64"
-  ENV CUDA_BIN_PATH
-  NO_DEFAULT_PATH
-  )
-mark_as_advanced(CUDA_MEMCHECK_EXECUTABLE)
-
 macro(add_hoomd_script_test_cuda_memcheck test_py)
 # name the test
 get_filename_component(_test_name ${test_py} NAME_WE)
@@ -102,8 +91,17 @@ endif(ENABLE_CUDA)
 # loop through all test_*.py files
 file(GLOB _hoomd_script_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_*.py)
 
+# exclude some tests from serial
+SET(EXCLUDE_FROM_SERIAL
+    test_communication
+    test_update_balance
+    )
+
 foreach(test ${_hoomd_script_tests})
-add_hoomd_script_test(${test})
+GET_FILENAME_COMPONENT(test_name ${test} NAME_WE)
+if(NOT "${EXCLUDE_FROM_SERIAL}" MATCHES ${test_name})
+    add_hoomd_script_test(${test})
+endif()
 endforeach(test)
 
 # exclude some tests from MPI

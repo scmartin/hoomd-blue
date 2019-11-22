@@ -18,7 +18,7 @@
     \brief Defines the faceted ellipsoid shape
 */
 
-/*! The faceted ellipoid is defined by the intersection of an ellipsoid of half axes a,b,c with
+/*! The faceted ellipsoid is defined by the intersection of an ellipsoid of half axes a,b,c with
  * planes given by the face normals n and offsets b, obeying the equation:
  *
  * r.n + b <= 0
@@ -50,7 +50,11 @@ struct faceted_ellipsoid_params : param_base
     {
     //! Empty constructor
     faceted_ellipsoid_params()
-        : a(1.0), b(1.0), c(1.0), N(0), ignore(1)
+        : verts(),
+          additional_verts(),
+          n(),
+          offset(),
+          a(1.0), b(1.0), c(1.0), N(0), ignore(1)
         { }
 
     #ifndef NVCC
@@ -60,7 +64,111 @@ struct faceted_ellipsoid_params : param_base
         n = ManagedArray<vec3<OverlapReal> >(n_facet, managed);
         offset = ManagedArray<OverlapReal> (n_facet, managed);
         }
+
+
+    faceted_ellipsoid_params(pybind11::dict v)
+        : faceted_ellipsoid_params(pybind11::len(v["normals"]), false)
+        {
+        pybind11::list normals = v["normals"].cast<pybind11::list>();
+        pybind11::list offsets = v["offsets"].cast<pybind11::list>();
+        pybind11::list vertices = v["vertices"].cast<pybind11::list>();
+        a = v["a"].cast<OverlapReal>();
+        b = v["b"].cast<OverlapReal>();
+        c = v["c"].cast<OverlapReal>();
+        pybind11::tuple origin_tuple = v["origin"].cast<pybind11::tuple>();
+        ignore = v["ignore_statistics"].cast<unsigned int>();
+
+        if (pybind11::len(offsets) != pybind11::len(normals))
+            throw std::runtime_error("Number of normals unequal number of offsets");
+
+
+        // extract the normals from the python list
+        for (unsigned int i = 0; i < len(normals); i++)
+            {
+            pybind11::list normals_i = pybind11::cast<pybind11::list>(normals[i]);
+            n[i] = vec3<OverlapReal>(pybind11::cast<OverlapReal>(normals_i[0]), pybind11::cast<OverlapReal>(normals_i[1]), pybind11::cast<OverlapReal>(normals_i[2]));
+            offset[i] = pybind11::cast<OverlapReal>(offsets[i]);
+            }
+
+        // extract the vertices from the python list
+        pybind11::dict verts_dict;
+        verts_dict["vertices"] = vertices;
+        verts_dict["ignore_statistics"] = ignore;
+        verts=poly3d_verts(verts_dict);
+
+        // scale vertices onto unit sphere
+        for (unsigned int i = 0; i < verts.N; ++i)
+            {
+            verts.x[i] /= a;
+            verts.y[i] /= b;
+            verts.z[i] /= c;
+            }
+
+
+        // set the origin
+        origin = vec3<OverlapReal>(pybind11::cast<OverlapReal>(origin_tuple[0]), pybind11::cast<OverlapReal>(origin_tuple[1]), pybind11::cast<OverlapReal>(origin_tuple[2]));
+
+        // add the edge-sphere vertices
+        //ShapeFacetedEllipsoid::initializeVertices(result, exec_conf->isCUDAEnabled());
+
+        }
+    pybind11::dict asDict()
+        {
+        pybind11::dict v;
+        pybind11::dict poly3d_verts_dict = verts.asDict();
+        pybind11::list vertices = poly3d_verts_dict["vertices"];
+        pybind11::list offsets;
+        pybind11::list normals;
+
+        for (unsigned int i = 0; i < pybind11::len(vertices); i++)
+            {
+            pybind11::list vert_i = vertices[i];
+            pybind11::list vert;
+            OverlapReal x = vert_i[0].cast<OverlapReal>();
+            OverlapReal y = vert_i[1].cast<OverlapReal>();
+            OverlapReal z = vert_i[2].cast<OverlapReal>();
+            vert.append(x*a);
+            vert.append(y*b);
+            vert.append(z*c);
+            pybind11::tuple vert_tuple = pybind11::tuple(vert);
+            vertices[i] = vert_tuple;
+            }
+
+        for (unsigned int i = 0; i < offset.size(); i++)
+            {
+            offsets.append(offset[i]);
+
+            vec3<OverlapReal> normal_i = n[i];
+            pybind11::list normal_i_list;
+            normal_i_list.append(normal_i.x);
+            normal_i_list.append(normal_i.y);
+            normal_i_list.append(normal_i.z);
+            pybind11::tuple normal_tuple = pybind11::tuple(normal_i_list);
+            normals.append(normal_tuple);
+            }
+            
+        pybind11::list origin_list;
+        origin_list.append(origin.x);
+        origin_list.append(origin.y);
+        origin_list.append(origin.z);
+        pybind11::tuple origin_tuple = pybind11::tuple(origin_list);
+
+        v["vertices"] = vertices;
+        v["normals"] = normals;
+        v["offsets"] = offsets;
+        v["a"] = a;
+        v["b"] = b;
+        v["c"] = c;
+        v["origin"] = origin_tuple;
+        v["ignore_statistics"] = ignore;
+        return v;
+        }
     #endif
+
+    bool isManaged()
+        {
+        return n.isManaged();
+        }
 
     poly3d_verts verts;           //!< Vertices of the polyhedron
     poly3d_verts additional_verts;//!< Vertices of the polyhedron edge-sphere intersection
@@ -78,7 +186,7 @@ struct faceted_ellipsoid_params : param_base
     /*! \param ptr Pointer to load data to (will be incremented)
         \param available_bytes Size of remaining shared memory allocation
      */
-    HOSTDEVICE void load_shared(char *& ptr, unsigned int &available_bytes) const
+    DEVICE void load_shared(char *& ptr, unsigned int &available_bytes)
         {
         n.load_shared(ptr,available_bytes);
         offset.load_shared(ptr,available_bytes);
@@ -86,14 +194,26 @@ struct faceted_ellipsoid_params : param_base
         additional_verts.load_shared(ptr, available_bytes);
         }
 
-    #ifdef ENABLE_CUDA
-    //! Attach managed memory to CUDA stream
-    void attach_to_stream(cudaStream_t stream) const
+    //! Determine size of a shared memory alloation
+    /*! \param ptr Pointer to increment
+        \param available_bytes Size of remaining shared memory allocation
+     */
+    HOSTDEVICE void allocate_shared(char *& ptr, unsigned int &available_bytes) const
         {
-        n.attach_to_stream(stream);
-        offset.attach_to_stream(stream);
-        verts.attach_to_stream(stream);
-        additional_verts.attach_to_stream(stream);
+        n.allocate_shared(ptr,available_bytes);
+        offset.allocate_shared(ptr,available_bytes);
+        verts.allocate_shared(ptr,available_bytes);
+        additional_verts.allocate_shared(ptr, available_bytes);
+        }
+
+    #ifdef ENABLE_CUDA
+    //! Set CUDA memory hints
+    void set_memory_hint() const
+        {
+        n.set_memory_hint();
+        offset.set_memory_hint();
+        verts.set_memory_hint();
+        additional_verts.set_memory_hint();
         }
     #endif
     } __attribute__((aligned(32)));
@@ -107,8 +227,9 @@ class SupportFuncFacetedEllipsoid
         //! Construct a support function for a faceted sphere
         /*! \param _params Parameters of the faceted sphere
         */
-        DEVICE SupportFuncFacetedEllipsoid(const faceted_ellipsoid_params& _params)
-            : params(_params)
+        DEVICE SupportFuncFacetedEllipsoid(const faceted_ellipsoid_params& _params,
+            const OverlapReal& _sweep_radius=OverlapReal(0.0))
+            : params(_params), sweep_radius(_sweep_radius)
             {
             }
 
@@ -131,9 +252,10 @@ class SupportFuncFacetedEllipsoid
         /*! \param n Normal vector input (in the local frame)
             \returns Local coords of the point furthest in the direction of n
         */
-        DEVICE vec3<OverlapReal> operator() (vec3<OverlapReal> n) const
+        DEVICE vec3<OverlapReal> operator() (const vec3<OverlapReal>& n_in) const
             {
             // transform support direction into coordinate system of the unit sphere
+            vec3<OverlapReal> n(n_in);
             n.x *= params.a; n.y *= params.b; n.z *= params.c;
 
             OverlapReal nsq = dot(n,n);
@@ -226,11 +348,16 @@ class SupportFuncFacetedEllipsoid
             // transform vertex on unit sphere back onto ellipsoid surface
             max_vec.x *= params.a; max_vec.y *= params.b; max_vec.z *= params.c;
 
-            return max_vec - params.origin;
+            // origin shift
+            max_vec -= params.origin;
+
+            // extend out by sweep radius
+            return max_vec + (sweep_radius * fast::rsqrt(dot(n_in,n_in))) * n_in;
             }
 
     private:
         const faceted_ellipsoid_params& params;      //!< Definition of faceted ellipsoid
+        const OverlapReal sweep_radius;             //!< The radius of a sphere sweeping the shape
     };
 
 
@@ -239,7 +366,7 @@ class SupportFuncFacetedEllipsoid
 
 
 //! Faceted sphere shape template
-/*! ShapeFacetedEllipsoid implements IntegratorHPMC's shape protocol for a sphere that is truncated
+/*! ShapeFacetedEllipsoid implements IntegratorHPMC 's shape protocol for a sphere that is truncated
     by a set of planes, defined through their plane equations n_i*x = n_i^2.
 
     The parameter defining the sphere is just a single Scalar, the sphere radius.
@@ -332,11 +459,19 @@ struct ShapeFacetedEllipsoid
     //! Returns true if this shape splits the overlap check over several threads of a warp using threadIdx.x
     HOSTDEVICE static bool isParallel() { return false; }
 
+    //! Returns true if the overlap check supports sweeping both shapes by a sphere of given radius
+    HOSTDEVICE static bool supportsSweepRadius()
+        {
+        return true;
+        }
+
     /*!
      * Generate the intersections points of polyhedron edges with the sphere
      */
-    DEVICE static void initializeVertices(param_type& _params, bool managed)
+    DEVICE static void initializeVertices(param_type& _params)
         {
+        bool managed = _params.isManaged();
+
         #ifndef NVCC
         _params.additional_verts = detail::poly3d_verts(2*_params.N*_params.N, managed);
         _params.additional_verts.diameter = OverlapReal(2.0); // for unit sphere
@@ -450,53 +585,30 @@ struct ShapeFacetedEllipsoid
     const param_type& params;           //!< Faceted sphere parameters
     };
 
-//! Check if circumspheres overlap
-/*! \param r_ab Vector defining the position of shape b relative to shape a (r_b - r_a)
-    \param a first shape
-    \param b second shape
-    \returns true if the circumspheres of both shapes overlap
-
-    \ingroup shape
-*/
-DEVICE inline bool check_circumsphere_overlap(const vec3<Scalar>& r_ab, const ShapeFacetedEllipsoid& a,
-    const ShapeFacetedEllipsoid &b)
-    {
-    OverlapReal DaDb = a.getCircumsphereDiameter() + b.getCircumsphereDiameter();
-    vec3<OverlapReal> dr(r_ab);
-
-    return (dot(dr,dr) <= DaDb*DaDb/OverlapReal(4.0));
-    }
-
 //! Overlap of faceted spheres
 /*! \param r_ab Vector defining the position of shape b relative to shape a (r_b - r_a)
     \param a first shape
     \param b second shape
     \param err in/out variable incremented when error conditions occur in the overlap test
+    \param sweep_radius Additional sphere radius to sweep the shapes with
     \returns true when *a* and *b* overlap, and false when they are disjoint
 
     \ingroup shape
 */
 template <>
-DEVICE inline bool test_overlap<ShapeFacetedEllipsoid, ShapeFacetedEllipsoid>(const vec3<Scalar>& r_ab, const ShapeFacetedEllipsoid& a, const ShapeFacetedEllipsoid& b, unsigned int& err)
+DEVICE inline bool test_overlap<ShapeFacetedEllipsoid, ShapeFacetedEllipsoid>(const vec3<Scalar>& r_ab, const ShapeFacetedEllipsoid& a, const ShapeFacetedEllipsoid& b,
+    unsigned int& err, Scalar sweep_radius_a, Scalar sweep_radius_b)
     {
     vec3<OverlapReal> dr(r_ab);
 
     OverlapReal DaDb = a.getCircumsphereDiameter() + b.getCircumsphereDiameter();
-    return detail::xenocollide_3d(detail::SupportFuncFacetedEllipsoid(a.params),
-                           detail::SupportFuncFacetedEllipsoid(b.params),
+    return detail::xenocollide_3d(detail::SupportFuncFacetedEllipsoid(a.params, sweep_radius_a),
+                           detail::SupportFuncFacetedEllipsoid(b.params, sweep_radius_b),
                            rotate(conj(quat<OverlapReal>(a.orientation)), dr + rotate(quat<OverlapReal>(b.orientation),b.params.origin))-a.params.origin,
                            conj(quat<OverlapReal>(a.orientation))* quat<OverlapReal>(b.orientation),
                            DaDb/2.0,
                            err);
 
-    /*
-    return detail::gjke_3d(detail::SupportFuncFacetedEllipsoid(a.params),
-                           detail::SupportFuncFacetedEllipsoid(b.params),
-                           rotate(conj(quat<OverlapReal>(a.orientation)), dr),
-                           conj(quat<OverlapReal>(a.orientation))* quat<OverlapReal>(b.orientation),
-                           DaDb/2.0,
-                           err);
-    */
     }
 
 }; // end namespace hpmc

@@ -26,7 +26,7 @@ Relevant methods:
   constant.
 * :py:meth:`hoomd.data.system_data.restore_snapshot()` replaces the current system state with the state stored in
   a snapshot.
-* :py:meth:`hoomd.data.make_snapshot()` creates an empty snapshot that you can populate with custom data.
+* ``hoomd.data.make_snapshot()`` creates an empty snapshot that you can populate with custom data.
 * :py:func:`hoomd.init.read_snapshot()` initializes a simulation from a snapshot.
 
 Examples::
@@ -44,13 +44,13 @@ restore_snapshot are collective calls, and need to be called on all ranks. But o
 in the snapshot::
 
     snapshot = system.take_snapshot(all=True)
-    if comm.get_rank() == 0:
+    if context.current.device.comm.rank == 0:
         s = init.create_random(N=100, phi_p=0.05);numpy.mean(snapshot.particles.velocity))
         snapshot.particles.position[0] = [1,2,3];
 
     system.restore_snapshot(snapshot);
     snapshot = data.make_snapshot(N=10, box=data.boxdim(L=10))
-    if comm.get_rank() == 0:
+    if context.current.device.comm.rank == 0:
         snapshot.particles.position[:] = ....
     init.read_snapshot(snapshot)
 
@@ -788,7 +788,6 @@ class system_data(hoomd.meta._metadata):
             snapshot = system.take_snapshot(bonds=true)
 
         """
-        hoomd.util.print_status_line();
 
         if all is True:
                 particles=True
@@ -834,33 +833,28 @@ class system_data(hoomd.meta._metadata):
             if the processor grid was optimal for the original box dimensions, but not for the new ones.
 
         """
-        hoomd.util.print_status_line()
 
         nx = int(nx)
         ny = int(ny)
         nz = int(nz)
 
         if nx == ny == nz == 1:
-            hoomd.context.msg.warning("All replication factors == 1. Not replicating system.\n")
+            hoomd.context.current.device.cpp_msg.warning("All replication factors == 1. Not replicating system.\n")
             return
 
         if nx <= 0 or ny <= 0 or nz <= 0:
-            hoomd.context.msg.error("Cannot replicate by zero or by a negative value along any direction.")
+            hoomd.context.current.device.cpp_msg.error("Cannot replicate by zero or by a negative value along any direction.")
             raise RuntimeError("nx, ny, nz need to be positive integers")
 
         # Take a snapshot
-        hoomd.util.quiet_status()
         cpp_snapshot = self.take_snapshot(all=True)
-        hoomd.util.unquiet_status()
 
-        if hoomd.comm.get_rank() == 0:
+        if hoomd.context.current.device.comm.rank == 0:
             # replicate
             cpp_snapshot.replicate(nx, ny, nz)
 
         # restore from snapshot
-        hoomd.util.quiet_status()
         self.restore_snapshot(cpp_snapshot)
-        hoomd.util.unquiet_status()
 
     def restore_snapshot(self, snapshot):
         R""" Re-initializes the system from a snapshot.
@@ -893,9 +887,8 @@ class system_data(hoomd.meta._metadata):
                 restore_snapshot() between run() commands to ensure that all per type coefficients are updated properly.
 
         """
-        hoomd.util.print_status_line();
 
-        if hoomd.comm.get_rank() == 0:
+        if hoomd.context.current.device.comm.rank == 0:
             if snapshot.has_particle_data and len(snapshot.particles.types) != self.sysdef.getParticleData().getNTypes():
                 raise RuntimeError("Number of particle types must remain the same")
             if snapshot.has_bond_data and len(snapshot.bonds.types) != self.sysdef.getBondData().getNTypes():
@@ -1035,7 +1028,7 @@ class pdata_types_proxy(object):
         ntypes = self.pdata.getNTypes();
         for i in range(0,ntypes):
             if self.pdata.getNameByType(i) == name:
-                hoomd.context.msg.warning("Type '"+name+"' already defined.\n");
+                hoomd.context.current.device.cpp_msg.warning("Type '"+name+"' already defined.\n");
                 return i
 
         typeid = self.pdata.addType(name);
@@ -2208,105 +2201,6 @@ class dihedral_data_proxy(object):
         typeid = dihedral.type;
         return self.ddata.getNameByType(typeid);
 
-## \internal
-# \brief Get data.boxdim from a SnapshotSystemData
-def get_snapshot_box(snapshot):
-    b = snapshot._global_box;
-    L = b.getL();
-    return boxdim(Lx=L.x, Ly=L.y, Lz=L.z, xy=b.getTiltFactorXY(), xz=b.getTiltFactorXZ(), yz=b.getTiltFactorYZ(), dimensions=snapshot._dimensions);
-
-## \internal
-# \brief Set data.boxdim to a SnapshotSystemData
-def set_snapshot_box(snapshot, box):
-    snapshot._global_box = box._getBoxDim();
-    snapshot._dimensions = box.dimensions;
-
-## \internal
-# \brief Broadcast snapshot to all ranks
-def broadcast_snapshot(cpp_snapshot):
-    hoomd.context._verify_init();
-    hoomd.util.print_status_line();
-    # broadcast from rank 0
-    cpp_snapshot._broadcast(0, hoomd.context.exec_conf);
-
-## \internal
-# \brief Broadcast snapshot to all ranks
-def broadcast_snapshot_all(cpp_snapshot):
-    hoomd.context._verify_init();
-    hoomd.util.print_status_line();
-    # broadcast from rank 0
-    cpp_snapshot._broadcast_all(0, hoomd.context.exec_conf);
-
-# Inject a box property into SnapshotSystemData that provides and accepts boxdim objects
-_hoomd.SnapshotSystemData_float.box = property(get_snapshot_box, set_snapshot_box);
-_hoomd.SnapshotSystemData_double.box = property(get_snapshot_box, set_snapshot_box);
-
-# Inject broadcast methods into SnapshotSystemData
-_hoomd.SnapshotSystemData_float.broadcast = broadcast_snapshot
-_hoomd.SnapshotSystemData_double.broadcast = broadcast_snapshot
-_hoomd.SnapshotSystemData_float.broadcast_all = broadcast_snapshot_all
-_hoomd.SnapshotSystemData_double.broadcast_all = broadcast_snapshot_all
-
-def make_snapshot(N, box, particle_types=['A'], bond_types=[], angle_types=[], dihedral_types=[], improper_types=[], pair_types=[], dtype='float'):
-    R""" Make an empty snapshot.
-
-    Args:
-        N (int): Number of particles to create.
-        box (:py:class:`hoomd.data.boxdim`): Simulation box parameters.
-        particle_types (list): Particle type names (must not be zero length).
-        bond_types (list): Bond type names (may be zero length).
-        angle_types (list): Angle type names (may be zero length).
-        dihedral_types (list): Dihedral type names (may be zero length).
-        improper_types (list): Improper type names (may be zero length).
-        pair_types(list): Special pair type names (may be zero length).
-            .. versionadded:: 2.1
-        dtype (str): Data type for the real valued numpy arrays in the snapshot. Must be either 'float' or 'double'.
-
-    Examples::
-
-        snapshot = data.make_snapshot(N=1000, box=data.boxdim(L=10))
-        snapshot = data.make_snapshot(N=64000, box=data.boxdim(L=1, dimensions=2, volume=1000), particle_types=['A', 'B'])
-        snapshot = data.make_snapshot(N=64000, box=data.boxdim(L=20), bond_types=['polymer'], dihedral_types=['dihedralA', 'dihedralB'], improper_types=['improperA', 'improperB', 'improperC'])
-        ... set properties in snapshot ...
-        init.read_snapshot(snapshot);
-
-    :py:func:`hoomd.data.make_snapshot()` creates all particles with **default properties**. You must set reasonable
-    values for particle properties before initializing the system with :py:func:`hoomd.init.read_snapshot()`.
-
-    The default properties are:
-
-    * position 0,0,0
-    * velocity 0,0,0
-    * image 0,0,0
-    * orientation 1,0,0,0
-    * typeid 0
-    * charge 0
-    * mass 1.0
-    * diameter 1.0
-
-    See Also:
-        :py:func:`hoomd.init.read_snapshot()`
-    """
-    if dtype == 'float':
-        snapshot = _hoomd.SnapshotSystemData_float();
-    elif dtype == 'double':
-        snapshot = _hoomd.SnapshotSystemData_double();
-    else:
-        raise ValueError("dtype must be either float or double");
-
-    snapshot.box = box;
-    if hoomd.comm.get_rank() == 0:
-        snapshot.particles.resize(N);
-
-    snapshot.particles.types = particle_types;
-    snapshot.bonds.types = bond_types;
-    snapshot.angles.types = angle_types;
-    snapshot.dihedrals.types = dihedral_types;
-    snapshot.impropers.types = improper_types;
-    snapshot.pairs.types = pair_types;
-
-    return snapshot;
-
 def gsd_snapshot(filename, frame=0):
     R""" Read a snapshot from a GSD file.
 
@@ -2318,7 +2212,7 @@ def gsd_snapshot(filename, frame=0):
     """
     hoomd.context._verify_init();
 
-    reader = _hoomd.GSDReader(hoomd.context.exec_conf, filename, abs(frame), frame < 0);
+    reader = _hoomd.GSDReader(hoomd.context.current.device.cpp_exec_conf, filename, abs(frame), frame < 0);
     return reader.getSnapshot();
 
 
@@ -2327,7 +2221,7 @@ def gsd_snapshot(filename, frame=0):
 class SnapshotParticleData:
     R""" Snapshot of particle data properties.
 
-    Users should not create SnapshotParticleData directly. Use :py:func:`hoomd.data.make_snapshot()`
+    Users should not create SnapshotParticleData directly. Use ``hoomd.data.make_snapshot()``
     or :py:meth:`hoomd.data.system_data.take_snapshot()` to make snapshots.
 
     Attributes:

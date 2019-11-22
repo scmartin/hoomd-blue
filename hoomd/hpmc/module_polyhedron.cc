@@ -4,7 +4,6 @@
 // Include the defined classes that are to be exported to python
 #include "IntegratorHPMC.h"
 #include "IntegratorHPMCMono.h"
-#include "IntegratorHPMCMonoImplicit.h"
 #include "ComputeFreeVolume.h"
 
 #include "ShapePolyhedron.h"
@@ -20,14 +19,10 @@
 #include "UpdaterExternalFieldWall.h"
 #include "UpdaterRemoveDrift.h"
 #include "UpdaterMuVT.h"
-#include "UpdaterMuVTImplicit.h"
 #include "UpdaterClusters.h"
-#include "UpdaterClustersImplicit.h"
 
 #ifdef ENABLE_CUDA
 #include "IntegratorHPMCMonoGPU.h"
-#include "IntegratorHPMCMonoImplicitGPU.h"
-#include "IntegratorHPMCMonoImplicitNewGPU.h"
 #include "ComputeFreeVolumeGPU.h"
 #endif
 
@@ -43,13 +38,10 @@ namespace hpmc
 void export_polyhedron(py::module& m)
     {
     export_IntegratorHPMCMono< ShapePolyhedron >(m, "IntegratorHPMCMonoPolyhedron");
-    export_IntegratorHPMCMonoImplicit< ShapePolyhedron >(m, "IntegratorHPMCMonoImplicitPolyhedron");
     export_ComputeFreeVolume< ShapePolyhedron >(m, "ComputeFreeVolumePolyhedron");
     // export_AnalyzerSDF< ShapePolyhedron >(m, "AnalyzerSDFPolyhedron");
     export_UpdaterMuVT< ShapePolyhedron >(m, "UpdaterMuVTPolyhedron");
     export_UpdaterClusters< ShapePolyhedron >(m, "UpdaterClustersPolyhedron");
-    export_UpdaterClustersImplicit< ShapePolyhedron, IntegratorHPMCMonoImplicit<ShapePolyhedron> >(m, "UpdaterClustersImplicitPolyhedron");
-    export_UpdaterMuVTImplicit< ShapePolyhedron, IntegratorHPMCMonoImplicit<ShapePolyhedron> >(m, "UpdaterMuVTImplicitPolyhedron");
 
     export_ExternalFieldInterface<ShapePolyhedron>(m, "ExternalFieldPolyhedron");
     export_LatticeField<ShapePolyhedron>(m, "ExternalFieldLatticePolyhedron");
@@ -61,8 +53,6 @@ void export_polyhedron(py::module& m)
 
     #ifdef ENABLE_CUDA
     export_IntegratorHPMCMonoGPU< ShapePolyhedron >(m, "IntegratorHPMCMonoGPUPolyhedron");
-    export_IntegratorHPMCMonoImplicitGPU< ShapePolyhedron >(m, "IntegratorHPMCMonoImplicitGPUPolyhedron");
-    export_IntegratorHPMCMonoImplicitNewGPU< ShapePolyhedron >(m, "IntegratorHPMCMonoImplicitNewGPUPolyhedron");
     export_ComputeFreeVolumeGPU< ShapePolyhedron >(m, "ComputeFreeVolumeGPUPolyhedron");
     #endif
     }

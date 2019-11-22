@@ -117,8 +117,8 @@ class unitcell(object):
         orientation (list): List of particle orientations.
 
     A unit cell is a box definition (*a1*, *a2*, *a3*, *dimensions*), and particle properties for *N* particles.
-    You do not need to specify all particle properties. Any property omitted will be initialized to defaults (see
-    :py:func:`hoomd.data.make_snapshot`). :py:class:`hoomd.init.create_lattice` initializes the system with many
+    You do not need to specify all particle properties. Any property omitted will be initialized to defaults.
+    :py:class:`hoomd.init.create_lattice` initializes the system with many
     copies of a unit cell.
 
     :py:class:`unitcell` is a completely generic unit cell representation. See other classes in the :py:mod:`hoomd.lattice`
@@ -260,7 +260,7 @@ class unitcell(object):
         snap = hoomd.data.make_snapshot(N=self.N, box=box, dtype='double');
         mapping = self.get_typeid_mapping();
 
-        if hoomd.comm.get_rank() == 0:
+        if hoomd.context.current.device.comm.rank == 0:
             snap.particles.types = self.get_type_list();
             snap.particles.typeid[:] = [mapping[name] for name in self.type_name];
             snap.particles.mass[:] = self.mass[:];
@@ -304,7 +304,6 @@ def sc(a, type_name='A'):
                              \end{array}\right)
         \end{eqnarray*}
     """
-    hoomd.util.print_status_line();
     return unitcell(N=1, type_name=[type_name], a1=[a,0,0], a2=[0,a,0], a3=[0,0,a], dimensions=3);
 
 def bcc(a, type_name='A'):
@@ -337,7 +336,6 @@ def bcc(a, type_name='A'):
                              \end{array}\right)
         \end{eqnarray*}
     """
-    hoomd.util.print_status_line();
     return unitcell(N=2,
                     type_name=[type_name, type_name],
                     position=[[0,0,0],[a/2,a/2,a/2]],
@@ -378,7 +376,6 @@ def fcc(a, type_name='A'):
                              \end{array}\right)
         \end{eqnarray*}
     """
-    hoomd.util.print_status_line();
     return unitcell(N=4,
                     type_name=[type_name]*4,
                     position=[[0,0,0],[0,a/2,a/2],[a/2,0,a/2],[a/2,a/2,0]],
@@ -415,7 +412,6 @@ def sq(a, type_name='A'):
                              \end{array}\right)
         \end{eqnarray*}
     """
-    hoomd.util.print_status_line();
     return unitcell(N=1, type_name=[type_name], a1=[a,0,0], a2=[0,a,0], a3=[0,0,1], dimensions=2);
 
 def hex(a, type_name='A'):
@@ -451,7 +447,6 @@ def hex(a, type_name='A'):
         \end{eqnarray*}
     """
 
-    hoomd.util.print_status_line();
     return unitcell(N=2,
                     type_name=[type_name, type_name],
                     position=[[0,0,0],[a/2,math.sqrt(3)*a/2,0]],

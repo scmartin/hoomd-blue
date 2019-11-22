@@ -13,7 +13,7 @@
 #include "ParticleData.h"
 #include "Index1D.h"
 
-#include "hoomd/extern/pybind/include/pybind11/numpy.h"
+#include <pybind11/numpy.h>
 
 #ifdef ENABLE_CUDA
 #include "BondedGroupData.cuh"
@@ -1240,6 +1240,7 @@ template<class T, typename Group>
         .def("addBondedGroup", &T::addBondedGroup)
         .def("removeBondedGroup", &T::removeBondedGroup)
         .def("setProfiler", &T::setProfiler)
+        .def("getTypes", &T::getTypesPy)
         ;
 
     if (T::typemap_val)
@@ -1251,8 +1252,7 @@ template<class T, typename Group>
             .def_property_readonly("typeid", &Snapshot::getTypeNP)
             .def_property_readonly("group", &Snapshot::getBondedTagsNP)
             .def_property("types", &Snapshot::getTypes, &Snapshot::setTypes)
-            .def("resize", &Snapshot::resize)
-            .def_readonly("N", &Snapshot::size)
+            .def_property("N", &Snapshot::getSize, &Snapshot::resize)
             ;
         }
     else
@@ -1263,8 +1263,7 @@ template<class T, typename Group>
             .def(py::init<unsigned int>())
             .def_property_readonly("value", &Snapshot::getValueNP)
             .def_property_readonly("group", &Snapshot::getBondedTagsNP)
-            .def("resize", &Snapshot::resize)
-            .def_readonly("N", &Snapshot::size)
+            .def_property("N", &Snapshot::getSize, &Snapshot::resize)
             ;
         }
    }
