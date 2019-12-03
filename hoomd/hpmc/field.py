@@ -117,7 +117,11 @@ class lattice_field(_external):
 
         self.compute_name = "lattice_field"
         enlist = hoomd.hpmc.data._param.ensure_list;
-        self.cpp_compute = cls(hoomd.context.current.system_definition, enlist(position), float(k), enlist(orientation), float(q), enlist(symmetry));
+        self.k = hoomd.variant._setup_variant_input(k);
+        self.q = hoomd.variant._setup_variant_input(q);
+        self.cpp_compute = cls(hoomd.context.current.system_definition, enlist(position), \
+                               self.k.cpp_variant, enlist(orientation), self.q.cpp_variant, \
+                               enlist(symmetry));
         hoomd.context.current.system.addCompute(self.cpp_compute, self.compute_name)
         if not composite:
             mc.set_external(self);
@@ -158,8 +162,10 @@ class lattice_field(_external):
               run(1000)
 
         """
+        self.k = hoomd.variant._setup_variant_input(k)
+        self.q = hoomd.variant._setup_variant_input(q)
         hoomd.util.print_status_line();
-        self.cpp_compute.setParams(float(k), float(q));
+        self.cpp_compute.setParams(self.k.cpp_variant, self.q.cpp_variant);
 
     def reset(self, timestep = None):
         R""" Reset the statistics counters.

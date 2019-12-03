@@ -440,7 +440,7 @@ class ExternalFieldWall : public ExternalFieldMono<Shape>
           m_pdata->getBoxChangeSignal().template disconnect<ExternalFieldWall<Shape>, &ExternalFieldWall<Shape>::scaleWalls>(this);
           }
 
-        double energydiff(const unsigned int& index, const vec3<Scalar>& position_old, const Shape& shape_old, const vec3<Scalar>& position_new, const Shape& shape_new)
+        double energydiff(unsigned int timestep, const unsigned int& index, const vec3<Scalar>& position_old, const Shape& shape_old, const vec3<Scalar>& position_new, const Shape& shape_new)
             {
             const BoxDim& box = this->m_pdata->getGlobalBox();
             vec3<Scalar> origin(m_pdata->getOrigin());
@@ -486,9 +486,11 @@ class ExternalFieldWall : public ExternalFieldMono<Shape>
                 }
             }
 
-        double calculateDeltaE(const Scalar4* const position_old,
-                                        const Scalar4* const orientation_old,
-                                        const BoxDim* const box_old)
+        double calculateDeltaE(unsigned int timestep,
+                               const Scalar4 * const position_old_arg,
+                               const Scalar4 * const orientation_old_arg,
+                               const BoxDim * const box_old_arg
+                              )
             {
             unsigned int numOverlaps = countOverlaps(0, false);
             if(numOverlaps > 0)
@@ -722,11 +724,11 @@ class ExternalFieldWall : public ExternalFieldMono<Shape>
             throw std::runtime_error("Error getting log value");
             }
 
-        bool wall_overlap(const unsigned int& index, const vec3<Scalar>& position_old,
+        bool wall_overlap(unsigned int timestep, const unsigned int& index, const vec3<Scalar>& position_old,
                           const Shape& shape_old, const vec3<Scalar>& position_new,
                           const Shape& shape_new)
             {
-            double energy = energydiff(index, position_old, shape_old, position_new, shape_new);
+            double energy = energydiff(timestep, index, position_old, shape_old, position_new, shape_new);
             return (energy == INFINITY);
             }
 
@@ -747,7 +749,7 @@ class ExternalFieldWall : public ExternalFieldMono<Shape>
                 int typ_i = __scalar_as_int(postype_i.w);
                 Shape shape_i(quat<Scalar>(orientation_i), params[typ_i]);
 
-                if (wall_overlap(i, pos_i, shape_i, pos_i, shape_i))
+                if (wall_overlap(timestep, i, pos_i, shape_i, pos_i, shape_i))
                     {
                     numOverlaps++;
                     }

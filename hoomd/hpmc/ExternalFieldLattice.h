@@ -11,6 +11,7 @@
 #include "hoomd/Compute.h"
 #include "hoomd/VectorMath.h"
 #include "hoomd/HOOMDMPI.h"
+#include <hoomd/Variant.h>
 
 #include "ExternalField.h"
 
@@ -160,9 +161,9 @@ class ExternalFieldLattice : public ExternalFieldMono<Shape>
     public:
         ExternalFieldLattice(  std::shared_ptr<SystemDefinition> sysdef,
                                         pybind11::list r0,
-                                        Scalar k,
+                                        std::shared_ptr<Variant> k,
                                         pybind11::list q0,
-                                        Scalar q,
+                                        std::shared_ptr<Variant> q,
                                         pybind11::list symRotations
                                     ) : ExternalFieldMono<Shape>(sysdef), m_k(k), m_q(q), m_Energy(0)
             {
@@ -202,10 +203,11 @@ class ExternalFieldLattice : public ExternalFieldMono<Shape>
 
         Scalar calculateBoltzmannWeight(unsigned int timestep) { return 0.0; }
 
-        double calculateDeltaE(const Scalar4 * const position_old_arg,
-                                        const Scalar4 * const orientation_old_arg,
-                                        const BoxDim * const box_old_arg
-                                        )
+        double calculateDeltaE(unsigned int timestep,
+                               const Scalar4 * const position_old_arg,
+                               const Scalar4 * const orientation_old_arg,
+                               const BoxDim * const box_old_arg
+                              )
             {
             // TODO: rethink the formatting a bit.
             ArrayHandle<Scalar4> h_pos(m_pdata->getPositions(), access_location::host, access_mode::readwrite);
@@ -231,8 +233,8 @@ class ExternalFieldLattice : public ExternalFieldMono<Shape>
             double dE = 0.0;
             for(size_t i = 0; i < m_pdata->getN(); i++)
                 {
-                Scalar old_E = calcE(i, vec3<Scalar>(*(position_old+i)), quat<Scalar>(*(orientation_old+i)), scaleOld);
-                Scalar new_E = calcE(i, vec3<Scalar>(*(position_new+i)), quat<Scalar>(*(orientation_new+i)), scaleNew);
+                Scalar old_E = calcE(timestep, i, vec3<Scalar>(*(position_old+i)), quat<Scalar>(*(orientation_old+i)), scaleOld);
+                Scalar new_E = calcE(timestep, i, vec3<Scalar>(*(position_new+i)), quat<Scalar>(*(orientation_new+i)), scaleNew);
                 dE += new_E - old_E;
                 }
 
@@ -260,7 +262,7 @@ class ExternalFieldLattice : public ExternalFieldMono<Shape>
                 {
                 vec3<Scalar> position(h_postype.data[i]);
                 quat<Scalar> orientation(h_orient.data[i]);
-                m_Energy += calcE(i, position, orientation);
+                m_Energy += calcE(timestep, i, position, orientation);
                 }
 
             #ifdef ENABLE_MPI
@@ -284,9 +286,9 @@ class ExternalFieldLattice : public ExternalFieldMono<Shape>
             m_num_samples++;
             }
 
-        double energydiff(const unsigned int& index, const vec3<Scalar>& position_old, const Shape& shape_old, const vec3<Scalar>& position_new, const Shape& shape_new)
+        double energydiff(unsigned int timestep, const unsigned int& index, const vec3<Scalar>& position_old, const Shape& shape_old, const vec3<Scalar>& position_new, const Shape& shape_new)
             {
-            double old_U = calcE(index, position_old, shape_old), new_U = calcE(index, position_new, shape_new);
+            double old_U = calcE(timestep, index, position_old, shape_old), new_U = calcE(timestep, index, position_new, shape_new);
             return new_U - old_U;
             }
 
@@ -428,11 +430,11 @@ class ExternalFieldLattice : public ExternalFieldMono<Shape>
                 }
             else if ( quantity == LATTICE_TRANS_SPRING_CONSTANT_LOG_NAME )
                 {
-                return m_k;
+                return m_k->getValue(timestep);
                 }
             else if ( quantity == LATTICE_ROTAT_SPRING_CONSTANT_LOG_NAME )
                 {
-                return m_q;
+                return m_q->getValue(timestep);
                 }
             else if ( quantity == LATTICE_NUM_SAMPLES_LOG_NAME )
                 {
@@ -445,7 +447,7 @@ class ExternalFieldLattice : public ExternalFieldMono<Shape>
                 }
             }
 
-        void setParams(Scalar k, Scalar q)
+        void setParams(std::shared_ptr<Variant> k, std::shared_ptr<Variant> q)
             {
             m_k = k;
             m_q = q;
@@ -494,7 +496,7 @@ class ExternalFieldLattice : public ExternalFieldMono<Shape>
     protected:
 
         // These could be a little redundant. think about this more later.
-        Scalar calcE_trans(const unsigned int& index, const vec3<Scalar>& position, const Scalar& scale = 1.0)
+        Scalar calcE_trans(unsigned int timestep, const unsigned int& index, const vec3<Scalar>& position, const Scalar& scale = 1.0)
             {
             ArrayHandle<unsigned int> h_tags(m_pdata->getTags(), access_location::host, access_mode::read);
             int3 dummy = make_int3(0,0,0);
@@ -506,10 +508,10 @@ class ExternalFieldLattice : public ExternalFieldMono<Shape>
             box.wrap(t, dummy);
             vec3<Scalar> shifted_pos(t);
             vec3<Scalar> dr = vec3<Scalar>(box.minImage(vec_to_scalar3(r0 - position + origin)));
-            return m_k*dot(dr,dr);
+            return m_k->getValue(timestep)*dot(dr,dr);
             }
 
-        Scalar calcE_rot(const unsigned int& index, const quat<Scalar>& orientation)
+        Scalar calcE_rot(unsigned int timestep, const unsigned int& index, const quat<Scalar>& orientation)
             {
             assert(m_symmetry.size());
             ArrayHandle<unsigned int> h_tags(m_pdata->getTags(), access_location::host, access_mode::read);
@@ -521,38 +523,38 @@ class ExternalFieldLattice : public ExternalFieldMono<Shape>
                 quat<Scalar> dq = q0 - equiv_orientation;
                 dqmin = (i == 0) ? norm2(dq) : fmin(dqmin, norm2(dq));
                 }
-            return m_q*dqmin;
+            return m_q->getValue(timestep)*dqmin;
             }
-        Scalar calcE_rot(const unsigned int& index, const Shape& shape)
+        Scalar calcE_rot(unsigned int timestep, const unsigned int& index, const Shape& shape)
             {
             if(!shape.hasOrientation())
                 return Scalar(0.0);
 
-            return calcE_rot(index, shape.orientation);
+            return calcE_rot(timestep, index, shape.orientation);
             }
-        Scalar calcE(const unsigned int& index, const vec3<Scalar>& position, const quat<Scalar>& orientation, const Scalar& scale = 1.0)
+        Scalar calcE(unsigned int timestep, const unsigned int& index, const vec3<Scalar>& position, const quat<Scalar>& orientation, const Scalar& scale = 1.0)
             {
             Scalar energy = 0.0;
             if(m_latticePositions.isValid())
                 {
-                energy += calcE_trans(index, position, scale);
+                energy += calcE_trans(timestep, index, position, scale);
                 }
             if(m_latticeOrientations.isValid())
                 {
-                energy += calcE_rot(index, orientation);
+                energy += calcE_rot(timestep, index, orientation);
                 }
             return energy;
             }
-        Scalar calcE(const unsigned int& index, const vec3<Scalar>& position, const Shape& shape, const Scalar& scale = 1.0)
+        Scalar calcE(unsigned int timestep, const unsigned int& index, const vec3<Scalar>& position, const Shape& shape, const Scalar& scale = 1.0)
             {
-            return calcE(index, position, shape.orientation, scale);
+            return calcE(timestep, index, position, shape.orientation, scale);
             }
     private:
         LatticeReferenceList<Scalar3>   m_latticePositions;         // positions of the lattice.
-        Scalar                          m_k;                        // spring constant
+        std::shared_ptr<Variant>        m_k;                        // spring constant
 
         LatticeReferenceList<Scalar4>   m_latticeOrientations;      // orientation of the lattice particles.
-        Scalar                          m_q;                        // spring constant
+        std::shared_ptr<Variant>        m_q;                        // spring constant
 
         std::vector< quat<Scalar> >     m_symmetry;       // quaternions in the symmetry group of the shape.
 
@@ -579,7 +581,7 @@ template<class Shape>
 void export_LatticeField(pybind11::module& m, std::string name)
     {
    pybind11::class_<ExternalFieldLattice<Shape>, std::shared_ptr< ExternalFieldLattice<Shape> > >(m, name.c_str(), pybind11::base< ExternalFieldMono<Shape> >())
-    .def(pybind11::init< std::shared_ptr<SystemDefinition>, pybind11::list, Scalar, pybind11::list, Scalar, pybind11::list>())
+    .def(pybind11::init< std::shared_ptr<SystemDefinition>, pybind11::list, std::shared_ptr<Variant>, pybind11::list, std::shared_ptr<Variant>, pybind11::list>())
     .def("setReferences", &ExternalFieldLattice<Shape>::setReferences)
     .def("setParams", &ExternalFieldLattice<Shape>::setParams)
     .def("reset", &ExternalFieldLattice<Shape>::reset)

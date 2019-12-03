@@ -40,10 +40,11 @@ class ExternalField : public Compute
         /*! Calculate deltaE for the whole system
             Used for box resizing
         */
-        virtual double calculateDeltaE(const Scalar4 * const  position_old,
-                                                const Scalar4 * const  orientation_old,
-                                                const BoxDim * const  box_old
-                                            ){return 0;}
+        virtual double calculateDeltaE(unsigned int timestep,
+                                       const Scalar4 * const position_old_arg,
+                                       const Scalar4 * const orientation_old_arg,
+                                       const BoxDim * const box_old_arg
+                                      ) {return 0;}
 
         virtual bool hasVolume() {return false;}
 
@@ -66,7 +67,7 @@ class ExternalFieldMono : public ExternalField
         virtual void compute(unsigned int timestep) {}
 
         //! method to calculate the energy difference for the proposed move.
-        virtual double energydiff(const unsigned int& index, const vec3<Scalar>& position_old, const Shape& shape_old, const vec3<Scalar>& position_new, const Shape& shape_new){return 0;}
+        virtual double energydiff(unsigned int timestep, const unsigned int& index, const vec3<Scalar>& position_old, const Shape& shape_old, const vec3<Scalar>& position_new, const Shape& shape_new){return 0;}
 
         virtual void reset(unsigned int timestep) {}
     };

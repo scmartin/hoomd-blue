@@ -68,7 +68,8 @@ class ExternalFieldJIT : public hpmc::ExternalFieldMono<Shape>
             return m_eval(box, type, r_i, q_i, diameter, charge);
             }
 
-        virtual double calculateDeltaE(const Scalar4 * const position_old_arg,
+        virtual double calculateDeltaE(unsigned int timestep,
+                                       const Scalar4 * const position_old_arg,
                                        const Scalar4 * const orientation_old_arg,
                                        const BoxDim * const box_old_arg
                                        )
@@ -104,7 +105,7 @@ class ExternalFieldJIT : public hpmc::ExternalFieldMono<Shape>
                 Scalar4 postype_i = h_postype.data[i];
                 unsigned int typ_i = __scalar_as_int(postype_i.w);
                 vec3<Scalar> pos_i = vec3<Scalar>(postype_i);
-                
+
                 dE += energy(box_new, typ_i, pos_i, quat<Scalar>(h_orientation.data[i]), h_diameter.data[i], h_charge.data[i]);
                 dE -= energy(*box_old, typ_i, vec3<Scalar>(*(position_old+i)), quat<Scalar>(*(orientation_old+i)), h_diameter.data[i], h_charge.data[i]);
                 }
@@ -120,7 +121,7 @@ class ExternalFieldJIT : public hpmc::ExternalFieldMono<Shape>
             }
 
         //! method to calculate the energy difference for the proposed move.
-        double energydiff(const unsigned int& index, const vec3<Scalar>& position_old, const Shape& shape_old, const vec3<Scalar>& position_new, const Shape& shape_new)
+        double energydiff(unsigned int timestep, const unsigned int& index, const vec3<Scalar>& position_old, const Shape& shape_old, const vec3<Scalar>& position_new, const Shape& shape_new)
             {
             ArrayHandle<Scalar4> h_postype(this->m_pdata->getPositions(), access_location::host, access_mode::read);
             Scalar4 postype_i = h_postype.data[index];

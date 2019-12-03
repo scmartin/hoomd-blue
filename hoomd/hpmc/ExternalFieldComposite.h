@@ -31,21 +31,22 @@ class ExternalFieldMonoComposite : public ExternalFieldMono<Shape>
 
         Scalar calculateBoltzmannWeight(unsigned int timestep) { return 0.0; }
 
-        double calculateDeltaE(const Scalar4 * const  position_old,
-                                        const Scalar4 * const  orientation_old,
-                                        const BoxDim * const  box_old
-                                        )
+        double calculateDeltaE(unsigned int timestep,
+                               const Scalar4 * const position_old_arg,
+                               const Scalar4 * const orientation_old_arg,
+                               const BoxDim * const box_old_arg
+                              )
             {
                 throw(std::runtime_error("ExternalFieldMonoComposite::calculateDeltaE is not implemented"));
                 return double(0.0);
             }
 
-        double energydiff(const unsigned int& index, const vec3<Scalar>& position_old, const Shape& shape_old, const vec3<Scalar>& position_new, const Shape& shape_new)
+        double energydiff(unsigned int timestep, const unsigned int& index, const vec3<Scalar>& position_old, const Shape& shape_old, const vec3<Scalar>& position_new, const Shape& shape_new)
             {
             double Energy = 0.0;
             for(size_t i = 0; i < m_externals.size(); i++)
                 {
-                Energy += m_externals[i]->energydiff(index, position_old, shape_old, position_new, shape_new);
+                Energy += m_externals[i]->energydiff(timestep, index, position_old, shape_old, position_new, shape_new);
                 }
             return Energy;
             }
