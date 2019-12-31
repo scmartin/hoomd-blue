@@ -510,5 +510,9 @@ void export_TwoStepNVTMTK(py::module& m)
                        >())
         .def("setT", &TwoStepNVTMTK::setT)
         .def("setTau", &TwoStepNVTMTK::setTau)
+        .def("getXi", &TwoStepNVTMTK::getXi)
+        .def("setXi", &TwoStepNVTMTK::setXi)
+        .def("getXiRot", &TwoStepNVTMTK::getXi)
+        .def("setXiRot", &TwoStepNVTMTK::setXiRot)
         ;
     }
