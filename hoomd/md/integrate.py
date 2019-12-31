@@ -254,7 +254,7 @@ class nvt(_integration_method):
             self.cpp_method.setTau(tau);
             self.tau = tau
 
-    def randomize_velocities(self, seed):
+    def randomize_velocities(self, seed, integrator_only=False):
         R""" Assign random velocities and angular momenta to particles in the
         group, sampling from the Maxwell-Boltzmann distribution. This method
         considers the dimensionality of the system and particle anisotropy, and
@@ -267,6 +267,7 @@ class nvt(_integration_method):
 
         Args:
             seed (int): Random number seed
+            integrator_only (bool): Do not randomize particle momenta, only integrator variables
 
         Note:
             Randomization is applied at the start of the next call to :py:func:`hoomd.run`.
@@ -280,7 +281,7 @@ class nvt(_integration_method):
         """
         timestep = hoomd.get_step()
         kT = self.kT.cpp_variant.getValue(timestep)
-        self.cpp_method.setRandomizeVelocitiesParams(kT, seed)
+        self.cpp_method.setRandomizeVelocitiesParams(kT, seed, integrator_only)
 
 class npt(_integration_method):
     R""" NPT Integration via MTK barostat-thermostat.
@@ -636,7 +637,7 @@ class npt(_integration_method):
 
         return data
 
-    def randomize_velocities(self, seed):
+    def randomize_velocities(self, seed, integrator_only=False):
         R""" Assign random velocities and angular momenta to particles in the
         group, sampling from the Maxwell-Boltzmann distribution. This method
         considers the dimensionality of the system and particle anisotropy, and
@@ -649,6 +650,7 @@ class npt(_integration_method):
 
         Args:
             seed (int): Random number seed
+            integrator_only (bool): Do not randomize particle momenta, only integrator variables
 
         Note:
             Randomization is applied at the start of the next call to :py:func:`hoomd.run`.
@@ -662,7 +664,7 @@ class npt(_integration_method):
         """
         timestep = hoomd.get_step()
         kT = self.kT.cpp_variant.getValue(timestep)
-        self.cpp_method.setRandomizeVelocitiesParams(kT, seed)
+        self.cpp_method.setRandomizeVelocitiesParams(kT, seed, integrator_only)
 
 class nph(npt):
     R""" NPH Integration via MTK barostat-thermostat..
@@ -701,7 +703,7 @@ class nph(npt):
         # initialize base class
         npt.__init__(self, nph=True, kT=1.0, **params);
 
-    def randomize_velocities(self, kT, seed):
+    def randomize_velocities(self, kT, seed, integrator_only=False):
         R""" Assign random velocities and angular momenta to particles in the
         group, sampling from the Maxwell-Boltzmann distribution. This method
         considers the dimensionality of the system and particle anisotropy, and
@@ -715,6 +717,7 @@ class nph(npt):
         Args:
             kT (float): Temperature (in energy units)
             seed (int): Random number seed
+            integrator_only (bool): Do not randomize particle momenta, only integrator variables
 
         Note:
             Randomization is applied at the start of the next call to :py:func:`hoomd.run`.
@@ -726,7 +729,7 @@ class nph(npt):
             run(100)
 
         """
-        self.cpp_method.setRandomizeVelocitiesParams(kT, seed)
+        self.cpp_method.setRandomizeVelocitiesParams(kT, seed, integrator_only)
 
 class nve(_integration_method):
     R""" NVE Integration via Velocity-Verlet
@@ -842,7 +845,7 @@ class nve(_integration_method):
             run(100)
 
         """
-        self.cpp_method.setRandomizeVelocitiesParams(kT, seed)
+        self.cpp_method.setRandomizeVelocitiesParams(kT, seed, false)
 
 class langevin(_integration_method):
     R""" Langevin dynamics.
@@ -1536,4 +1539,4 @@ class berendsen(_integration_method):
         """
         timestep = hoomd.get_step()
         kT = self.kT.cpp_variant.getValue(timestep)
-        self.cpp_method.setRandomizeVelocitiesParams(kT, seed)
+        self.cpp_method.setRandomizeVelocitiesParams(kT, seed, false)

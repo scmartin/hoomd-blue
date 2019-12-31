@@ -221,9 +221,11 @@ class PYBIND11_EXPORT IntegrationMethodTwoStep
          */
         virtual unsigned int getRotationalNDOF(std::shared_ptr<ParticleGroup> query_group);
 
-        void setRandomizeVelocitiesParams(Scalar T_randomize, unsigned int seed_randomize)
+        void setRandomizeVelocitiesParams(Scalar T_randomize, unsigned int seed_randomize,
+            bool integrator_only)
             {
             m_T_randomize = T_randomize;
+            m_randomize_integrator_variables_only = integrator_only;
             m_seed_randomize = seed_randomize;
             m_shouldRandomize = true;
             }
@@ -245,6 +247,7 @@ class PYBIND11_EXPORT IntegrationMethodTwoStep
         Scalar m_T_randomize = 0;
         unsigned int m_seed_randomize = 0;
         bool m_shouldRandomize = false;
+        bool m_randomize_integrator_variables_only = false;
 
         Scalar m_deltaT;                                    //!< The time step
 
