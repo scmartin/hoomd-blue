@@ -64,32 +64,11 @@ class PYBIND11_EXPORT TwoStepNVTMTK : public IntegrationMethodTwoStep
             m_tau = tau;
             }
 
-        //! Get the value of xi
-        Scalar getXi()
-            {
-            return getIntegratorVariables().variable[0];
-            }
-
-        //! Set the value of xi
+        //! Set the value of xi (for unit tests)
         void setXi(Scalar new_xi)
             {
             IntegratorVariables v = getIntegratorVariables();
             Scalar& xi = v.variable[0];
-            xi = new_xi;
-            setIntegratorVariables(v);
-            }
-
-        //! Get the value of xi_rot
-        Scalar getXiRot()
-            {
-            return getIntegratorVariables().variable[2];
-            }
-
-        //! Set the value of xi_rot
-        void setXiRot(Scalar new_xi)
-            {
-            IntegratorVariables v = getIntegratorVariables();
-            Scalar& xi = v.variable[2];
             xi = new_xi;
             setIntegratorVariables(v);
             }
