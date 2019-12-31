@@ -283,12 +283,12 @@ class nvt(_integration_method):
         kT = self.kT.cpp_variant.getValue(timestep)
         self.cpp_method.setRandomizeVelocitiesParams(kT, seed, integrator_only)
 
-    def get_xi():
+    def get_xi(self):
         R"""  Return the thermostat momentum variable for the translational degrees of freedom
         """
         return self.cpp_method.getXi()
 
-    def set_xi(xi):
+    def set_xi(self,xi):
         R"""  Set the thermostat momentum variable for the translational degrees of freedom
 
         Args:
@@ -296,12 +296,12 @@ class nvt(_integration_method):
         """
         self.cpp_method.setXi(xi)
 
-    def get_xi_rot():
+    def get_xi_rot(self):
         R"""  Return the thermostat momentum variable for the rotational degrees of freedom
         """
         return self.cpp_method.getXiRot()
 
-    def set_xi_rot(xi_rot):
+    def set_xi_rot(self,xi_rot):
         R"""  Set the thermostat momentum variable for the rotational degrees of freedom
 
         Args:
