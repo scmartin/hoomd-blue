@@ -845,7 +845,7 @@ class nve(_integration_method):
             run(100)
 
         """
-        self.cpp_method.setRandomizeVelocitiesParams(kT, seed, false)
+        self.cpp_method.setRandomizeVelocitiesParams(kT, seed, False)
 
 class langevin(_integration_method):
     R""" Langevin dynamics.
@@ -1539,4 +1539,4 @@ class berendsen(_integration_method):
         """
         timestep = hoomd.get_step()
         kT = self.kT.cpp_variant.getValue(timestep)
-        self.cpp_method.setRandomizeVelocitiesParams(kT, seed, false)
+        self.cpp_method.setRandomizeVelocitiesParams(kT, seed, False)
