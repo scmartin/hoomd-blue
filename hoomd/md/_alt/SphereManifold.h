@@ -4,7 +4,7 @@
 
 // Maintainer: pschoenhoefer
 
-#include "Manifold.h"
+#include "hoomd/md/Manifold.h"
 
 /*! \file SphereManifold.h
     \brief Declares the implicit function of a sphere.
@@ -13,8 +13,6 @@
 #ifdef NVCC
 #error This header cannot be compiled by nvcc
 #endif
-
-#include <hoomd/extern/pybind/include/pybind11/pybind11.h>
 
 #ifndef __SPHERE_MANIFOLD_H__
 #define __SPHERE_MANIFOLD_H__
@@ -27,10 +25,7 @@ class PYBIND11_EXPORT SphereManifold : public Manifold
         /*! \param r The r of the sphere.
             \param P The location of the sphere.
         */
-        SphereManifold(std::shared_ptr<SystemDefinition> sysdef,
-                  std::shared_ptr<ParticleGroup> group,
-                  Scalar r, 
-                  Scalar3 P=make_scalar3(0,0,0));
+        SphereManifold(Scalar r, Scalar3 P=make_scalar3(0,0,0));
 
         //! Destructor
         virtual ~SphereManifold();
@@ -45,7 +40,7 @@ class PYBIND11_EXPORT SphereManifold : public Manifold
         */
         Scalar3 derivative(Scalar3 point);
 
-    protected:
+    private:
         Scalar m_r; //! The radius of the sphere.
         Scalar3 m_P; //! The center of the sphere.
 

@@ -151,7 +151,7 @@ class _constraint_force(hoomd.meta._metadata):
     def get_metadata(self):
         data = hoomd.meta._metadata.get_metadata(self)
         data['enabled'] = self.enabled
-        if self.name is not "":
+        if self.name != "":
             data['name'] = self.name
         return data
 
@@ -532,7 +532,7 @@ class _manifold():
     #
     # Initializes the cpp_manifold to None.
     # If specified, assigns a name to the instance
-    def __init__(self):
+    def __init__(self,group):
         # check if initialization has occurred
         if not hoomd.init.is_initialized():
             hoomd.context.msg.error("Cannot create manifold before initialization\n");
@@ -549,16 +549,19 @@ class _manifold():
 
         Args:
             position (np.array): The position to evaluate."""
-        return self.cpp_manifold.implicit_function(_hoomd.vec3_scalar(position[0], position[1], position[2]))
+        return self.cpp_manifold.implicit_function(_hoomd.make_scalar3(position[0], position[1], position[2]))
 
     def derivative(self, position):
         """Evaluate the derivative of the implicit function.
 
         Args:
             position (np.array): The position to evaluate at."""
-        return self.cpp_manifold.derivative(_hoomd.vec3_scalar(position[0], position[1], position[2]))
+        return self.cpp_manifold.derivative(_hoomd.make_scalar3(position[0], position[1], position[2]))
 
 class sphere_manifold(_manifold):
-    def __init__(self, radius=1, center=(0, 0, 0)):
-        super(sphere_manifold, self).__init__()
-        self.cpp_manifold = _md.SphereManifold(radius, _hoomd.vec3_scalar(center[0], center[1], center[2]))
+    def __init__(self,group,radius, center):
+        # initialize the base class
+        _manifold.__init__(self,group)
+        #super(sphere_manifold, self).__init__(group.cpp_group)
+        center = _hoomd.make_scalar3(center[0], center[1], center[2]);
+        self.cpp_manifold = _md.SphereManifold(hoomd.context.current.system_definition, group.cpp_group, radius, center )

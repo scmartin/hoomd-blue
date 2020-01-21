@@ -18,18 +18,13 @@ using namespace std;
     \param P position of the sphere
     \param r radius of the sphere
 */
-SphereManifold::SphereManifold(std::shared_ptr<SystemDefinition> sysdef,
-                               std::shared_ptr<ParticleGroup> group,
-                               Scalar r,
-                               Scalar3 P)
-  : Manifold(sysdef, group), m_r(r), m_P(P) 
+SphereManifold::SphereManifold(Scalar r, Scalar3 P)
+            : m_r(r), m_P(P) 
        {
-    m_exec_conf->msg->notice(5) << "Constructing SphereManifold" << endl;
        }
 
 SphereManifold::~SphereManifold() 
        {
-    m_exec_conf->msg->notice(5) << "Destroying SphereManifold" << endl;
        }
 
         //! Return the value of the implicit surface function of the sphere.
@@ -52,8 +47,8 @@ Scalar3 SphereManifold::derivative(Scalar3 point)
 //! Exports the SphereManifold class to python
 void export_SphereManifold(pybind11::module& m)
     {
-    py::class_< SphereManifold, std::shared_ptr<SphereManifold> >(m, "SphereManifold", py::base<Manifold>())
-    .def(py::init< std::shared_ptr<SystemDefinition>,std::shared_ptr<ParticleGroup>,Scalar, Scalar3 >())
+    pybind11::class_< SphereManifold, std::shared_ptr<SphereManifold> >(m, "SphereManifold", pybind11::base<Manifold>())
+    .def(py::init<Scalar, Scalar3 >())
     .def("implicit_function", &SphereManifold::implicit_function)
     .def("derivative", &SphereManifold::derivative)
     ;

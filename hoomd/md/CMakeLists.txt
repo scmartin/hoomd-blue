@@ -18,6 +18,7 @@ set(_md_sources module-md.cc
                    HarmonicImproperForceCompute.cc
                    IntegrationMethodTwoStep.cc
                    IntegratorTwoStep.cc
+                   Manifold.cc
                    MolecularForceCompute.cc
                    NeighborListBinned.cc
                    NeighborList.cc
