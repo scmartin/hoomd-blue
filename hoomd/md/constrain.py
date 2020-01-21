@@ -520,4 +520,45 @@ class oneD(_constraint_force):
         self.metadata_fields = ['group','constraint_vector']
 
 
+## \internal
+# \brief Base class for manifold
+#
+# A manifold in hoomd reflects a Manifold in c++.
+class _manifold():
+    ## \internal
+    # \brief Constructs the constraint force
+    #
+    # \param name name of the constraint force instance
+    #
+    # Initializes the cpp_manifold to None.
+    # If specified, assigns a name to the instance
+    def __init__(self):
+        # check if initialization has occurred
+        if not hoomd.init.is_initialized():
+            hoomd.context.msg.error("Cannot create manifold before initialization\n");
+            raise RuntimeError('Error creating manifold');
 
+        self.cpp_manifold = None;
+
+    ## \var cpp_manifold
+    # \internal
+    # \brief Stores the C++ side Manifold managed by this class
+
+    def implicit_function(self, position):
+        """Evaluate the implicit function.
+
+        Args:
+            position (np.array): The position to evaluate."""
+        return self.cpp_manifold.implicit_function(_hoomd.vec3_scalar(position[0], position[1], position[2]))
+
+    def derivative(self, position):
+        """Evaluate the derivative of the implicit function.
+
+        Args:
+            position (np.array): The position to evaluate at."""
+        return self.cpp_manifold.derivative(_hoomd.vec3_scalar(position[0], position[1], position[2]))
+
+class sphere_manifold(_manifold):
+    def __init__(self, radius=1, center=(0, 0, 0)):
+        super(sphere_manifold, self).__init__()
+        self.cpp_manifold = _md.SphereManifold(radius, _hoomd.vec3_scalar(center[0], center[1], center[2]))
