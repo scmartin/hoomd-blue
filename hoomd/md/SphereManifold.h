@@ -28,7 +28,6 @@ class PYBIND11_EXPORT SphereManifold : public Manifold
             \param P The location of the sphere.
         */
         SphereManifold(std::shared_ptr<SystemDefinition> sysdef,
-                  std::shared_ptr<ParticleGroup> group,
                   Scalar r, 
                   Scalar3 P=make_scalar3(0,0,0));
 
@@ -49,6 +48,9 @@ class PYBIND11_EXPORT SphereManifold : public Manifold
         Scalar m_r; //! The radius of the sphere.
         Scalar3 m_P; //! The center of the sphere.
 
+    private:
+        //! Validate that the sphere is in the box and all particles are very near the constraint
+        void validate();
     };
 
 //! Exports the SphereManifold class to python

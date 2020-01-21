@@ -26,15 +26,11 @@ class PYBIND11_EXPORT Manifold
     {
     public:
         //! Constructs the compute. Does nothing in base class.
-        Manifold(std::shared_ptr<SystemDefinition> sysdef,
-                 std::shared_ptr<ParticleGroup> group);
+        Manifold(std::shared_ptr<SystemDefinition> sysdef);
         virtual ~Manifold() {}
 
         //! Sets the profiler for the manifold to use
         void setProfiler(std::shared_ptr<Profiler> prof);
-
-        //! Access the group
-        std::shared_ptr<ParticleGroup> getGroup() { return m_group; }
 
         //! Return the value of the implicit surface function describing the manifold F(x,y,z)=0.
         /*! \param point The location to evaluate the implicit surface function.
@@ -59,7 +55,6 @@ class PYBIND11_EXPORT Manifold
 
     protected:
         const std::shared_ptr<SystemDefinition> m_sysdef; //!< The system definition this method is associated with
-        const std::shared_ptr<ParticleGroup> m_group;     //!< The group of particles this method works on
         const std::shared_ptr<ParticleData> m_pdata;      //!< The particle data this method is associated with
         std::shared_ptr<Profiler> m_prof;                 //!< The profiler this method is to use
         std::shared_ptr<const ExecutionConfiguration> m_exec_conf; //!< Stored shared ptr to the execution configuration

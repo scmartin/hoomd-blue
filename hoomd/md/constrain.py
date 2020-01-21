@@ -532,7 +532,7 @@ class _manifold():
     #
     # Initializes the cpp_manifold to None.
     # If specified, assigns a name to the instance
-    def __init__(self,group):
+    def __init__(self):
         # check if initialization has occurred
         if not hoomd.init.is_initialized():
             hoomd.context.msg.error("Cannot create manifold before initialization\n");
@@ -559,9 +559,9 @@ class _manifold():
         return self.cpp_manifold.derivative(_hoomd.make_scalar3(position[0], position[1], position[2]))
 
 class sphere_manifold(_manifold):
-    def __init__(self,group,radius, center):
+    def __init__(self,radius, center):
+        hoomd.util.print_status_line();
         # initialize the base class
-        _manifold.__init__(self,group)
-        #super(sphere_manifold, self).__init__(group.cpp_group)
+        _manifold.__init__(self);
         center = _hoomd.make_scalar3(center[0], center[1], center[2]);
-        self.cpp_manifold = _md.SphereManifold(hoomd.context.current.system_definition, group.cpp_group, radius, center )
+        self.cpp_manifold = _md.SphereManifold(hoomd.context.current.system_definition, radius, center );

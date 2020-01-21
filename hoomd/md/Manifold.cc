@@ -25,14 +25,12 @@ using namespace std;
     \param group The group of particles this integration method is to work on
     \post The method is constructed with the given particle data and a NULL profiler.
 */
-Manifold::Manifold(std::shared_ptr<SystemDefinition> sysdef,
-                   std::shared_ptr<ParticleGroup> group)
-    : m_sysdef(sysdef), m_group(group), m_pdata(m_sysdef->getParticleData()), m_exec_conf(m_pdata->getExecConf())
+Manifold::Manifold(std::shared_ptr<SystemDefinition> sysdef)
+    : m_sysdef(sysdef), m_pdata(m_sysdef->getParticleData()), m_exec_conf(m_pdata->getExecConf())
     {
     // sanity check
     assert(m_sysdef);
     assert(m_pdata);
-    assert(m_group);
     }
 
 void Manifold::setProfiler(std::shared_ptr<Profiler> prof)
@@ -44,7 +42,7 @@ void Manifold::setProfiler(std::shared_ptr<Profiler> prof)
 void export_Manifold(pybind11::module& m)
     {
     py::class_< Manifold, std::shared_ptr<Manifold> >(m, "Manifold")
-    .def(py::init< std::shared_ptr<SystemDefinition>, std::shared_ptr<ParticleGroup> >())
+    .def(py::init< std::shared_ptr<SystemDefinition> >())
     .def("implicit_function", &Manifold::implicit_function)
     .def("derivative", &Manifold::derivative)
     ;

@@ -19,12 +19,13 @@ using namespace std;
     \param r radius of the sphere
 */
 SphereManifold::SphereManifold(std::shared_ptr<SystemDefinition> sysdef,
-                               std::shared_ptr<ParticleGroup> group,
                                Scalar r,
                                Scalar3 P)
-  : Manifold(sysdef, group), m_r(r), m_P(P) 
+  : Manifold(sysdef), m_r(r), m_P(P) 
        {
     m_exec_conf->msg->notice(5) << "Constructing SphereManifold" << endl;
+
+    validate();
        }
 
 SphereManifold::~SphereManifold() 
@@ -49,11 +50,26 @@ Scalar3 SphereManifold::derivative(Scalar3 point)
        return point - m_P;
        }
 
+void SphereManifold::validate()
+    {
+    BoxDim box = m_pdata->getGlobalBox();
+    Scalar3 lo = box.getLo();
+    Scalar3 hi = box.getHi();
+
+    if (m_P.x + m_r > hi.x || m_P.x - m_r < lo.x ||
+        m_P.y + m_r > hi.y || m_P.y - m_r < lo.y ||
+        m_P.z + m_r > hi.z || m_P.z - m_r < lo.z)
+        {
+        m_exec_conf->msg->warning() << "constrain.sphere_manifold: Sphere manifold is outside of the box. Constrained particle positions may be incorrect"
+             << endl;
+        }
+    }
+
 //! Exports the SphereManifold class to python
 void export_SphereManifold(pybind11::module& m)
     {
     py::class_< SphereManifold, std::shared_ptr<SphereManifold> >(m, "SphereManifold", py::base<Manifold>())
-    .def(py::init< std::shared_ptr<SystemDefinition>,std::shared_ptr<ParticleGroup>,Scalar, Scalar3 >())
+    .def(py::init< std::shared_ptr<SystemDefinition>,Scalar, Scalar3 >())
     .def("implicit_function", &SphereManifold::implicit_function)
     .def("derivative", &SphereManifold::derivative)
     ;
