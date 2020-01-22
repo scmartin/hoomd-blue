@@ -862,6 +862,129 @@ class nve(_integration_method):
         """
         self.cpp_method.setRandomizeVelocitiesParams(kT, seed)
 
+class nve_rattle(_integration_method):
+    R""" RATTLE algorithm applied on NVE Integration via Velocity-Verlet
+
+    Args:
+        group (:py:mod:`hoomd.group`): Group of particles on which to apply this method.
+        manifold (:py:mod:`hoomd.md.constrain.manifold`): Manifold on which particles are constraint during the integration steps.
+        limit (bool): (optional) Enforce that no particle moves more than a distance of \a limit in a single time step
+        eta (Scalar): (optional) Sets the tolerance of the RATTLE algorithm
+        zero_force (bool): When set to true, particles in the \a group are integrated forward in time with constant
+          velocity and any net force on them is ignored.
+
+
+    :py:class:`RATTLEnve` performs constant volume, constant energy simulations constraint on a manifold 
+    using the standard Velocity-Verlet method. For poor initial conditions that include overlapping atoms, a
+    limit can be specified to the movement a particle is allowed to make in one time step.
+    After a few thousand time steps with the limit set, the system should be in a safe state
+    to continue with unconstrained integration.
+
+    Another use-case for :py:class:`RATTLEnve` is to fix the velocity of a certain group of particles. This can be achieved by
+    setting the velocity of those particles in the initial condition and setting the *zero_force* option to True
+    for that group. A True value for *zero_force* causes integrate.nve to ignore any net force on each particle and
+    integrate them forward in time with a constant velocity.
+
+    Note:
+        With an active limit, Newton's third law is effectively **not** obeyed and the system
+        can gain linear momentum. Activate the :py:class:`hoomd.md.update.zero_momentum` updater during the limited nve
+        run to prevent this.
+
+    :py:class:`RATTLEnve` is an integration method. It must be used with :py:class:`mode_standard`.
+
+    A :py:class:`hoomd.compute.thermo` is automatically specified and associated with *group*.
+
+    Examples::
+
+        all = group.all()
+	sphere = constrain.sphere_manifold(r=10,P=(0,0,0))
+        integrate.RATTLEnve(group=all, manifold=sphere)
+        integrator = integrate.RATTLEnve(group=all,manifold=sphere)
+        typeA = group.type('A')
+        integrate.RATTLEnve(group=typeA, manifold=sphere, limit=0.01)
+        integrate.RATTLEnve(group=typeA, manifold=sphere, eta=0.000001)
+        integrate.RATTLEnve(group=typeA, zero_force=True)
+
+    """
+    def __init__(self, group, manifold, limit=None, eta=0.000001, zero_force=False):
+        hoomd.util.print_status_line();
+
+        # initialize base class
+        _integration_method.__init__(self);
+
+        # create the compute thermo
+        hoomd.compute._get_unique_thermo(group=group);
+
+        # initialize the reflected c++ class
+        if not hoomd.context.exec_conf.isCUDAEnabled():
+            self.cpp_method = _md.TwoStepRATTLENVE(hoomd.context.current.system_definition, group.cpp_group, manifold.cpp_manifold, False, eta);
+        else:
+            raise RuntimeError("Not supported on GPU yet");
+            #self.cpp_method = _md.TwoStepNVEGPU(hoomd.context.current.system_definition, group.cpp_group);
+
+        # set the limit
+        if limit is not None:
+            self.cpp_method.setLimit(limit);
+
+        self.cpp_method.setZeroForce(zero_force);
+
+        self.cpp_method.validateGroup()
+
+        # store metadata
+        self.group = group
+        self.limit = limit
+        self.metadata_fields = ['group', 'limit']
+
+    def set_params(self, limit=None, zero_force=None):
+        R""" Changes parameters of an existing integrator.
+
+        Args:
+            limit (bool): (if set) New limit value to set. Removes the limit if limit is False
+            zero_force (bool): (if set) New value for the zero force option
+
+        Examples::
+
+            integrator.set_params(limit=0.01)
+            integrator.set_params(limit=False)
+        """
+        hoomd.util.print_status_line();
+        self.check_initialization();
+
+        # change the parameters
+        if limit is not None:
+            if limit == False:
+                self.cpp_method.removeLimit();
+            else:
+                self.cpp_method.setLimit(limit);
+            self.limit = limit
+
+        if zero_force is not None:
+            self.cpp_method.setZeroForce(zero_force);
+
+    def randomize_velocities(self, kT, seed):
+        R""" Assign random velocities and angular momenta to particles in the
+        group, sampling from the Maxwell-Boltzmann distribution. This method
+        considers the dimensionality of the system and particle anisotropy, and
+        removes drift (the center of mass velocity).
+
+        .. versionadded:: 2.3
+
+        Args:
+            kT (float): Temperature (in energy units)
+            seed (int): Random number seed
+
+        Note:
+            Randomization is applied at the start of the next call to :py:func:`hoomd.run`.
+
+        Example::
+
+            integrator = md.integrate.nveRATTLE(group=group.all(),manifold=sphere)
+            integrator.randomize_velocities(kT=1.0, seed=42)
+            run(100)
+
+        """
+        self.cpp_method.setRandomizeVelocitiesParams(kT, seed)
+
 class langevin(_integration_method):
     R""" Langevin dynamics.
 

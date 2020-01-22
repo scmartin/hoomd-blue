@@ -55,6 +55,7 @@
 #include "TwoStepNPTMTK.h"
 #include "TwoStepNVE.h"
 #include "TwoStepNVTMTK.h"
+#include "TwoStepRATTLENVE.h"
 #include "WallData.h"
 #include "ZeroMomentumUpdater.h"
 #include "MuellerPlatheFlow.h"
@@ -378,6 +379,7 @@ PYBIND11_MODULE(_md, m)
     export_TwoStepLangevin(m);
     export_TwoStepBD(m);
     export_TwoStepNPTMTK(m);
+    export_TwoStepRATTLENVE(m);
     export_Berendsen(m);
     export_Enforce2DUpdater(m);
     export_ConstraintEllipsoid(m);

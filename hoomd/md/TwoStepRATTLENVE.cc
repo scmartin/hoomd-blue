@@ -4,10 +4,14 @@
 
 // Maintainer: joaander
 
-
-
 #include "TwoStepRATTLENVE.h"
 #include "hoomd/VectorMath.h"
+
+inline Scalar maxNorm(Scalar4 vec)
+    {
+    return std::max(std::max(std::max(vec.x, vec.y), vec.z), vec.w);
+    }
+
 
 
 using namespace std;
@@ -25,9 +29,9 @@ namespace py = pybind11;
 TwoStepRATTLENVE::TwoStepRATTLENVE(std::shared_ptr<SystemDefinition> sysdef,
                        std::shared_ptr<ParticleGroup> group,
                        std::shared_ptr<Manifold> manifold,
-                       bool skip_restart
+                       bool skip_restart,
                        Scalar eta)
-    : IntegrationMethodTwoStep(sysdef, group), m_manifold(manifold), m_eta(eta), m_limit(false), m_limit_val(1.0), m_zero_force(false)
+    : IntegrationMethodTwoStep(sysdef, group), m_manifold(manifold), m_limit(false), m_limit_val(1.0), m_eta(eta), m_zero_force(false)
     {
     m_exec_conf->msg->notice(5) << "Constructing TwoStepRATTLENVE" << endl;
 
@@ -91,9 +95,9 @@ void TwoStepRATTLENVE::integrateStepOne(unsigned int timestep)
     unsigned int maxiteration = 10;
 
 
-    // perform the first half step of velocity verlet
-    // r(t+deltaT) = r(t) + v(t)*deltaT + (1/2)a(t)*deltaT^2
-    // v(t+deltaT/2) = v(t) + (1/2)a*deltaT
+    // perform the first half step of the RATTLE algorithm applied on velocity verlet
+    // v(t+deltaT/2) = v(t) + (1/2)*deltaT*(a-lambda*n_manifold(x(t))/m)
+    // iterative: x(t+deltaT) = x(t+deltaT) - J^(-1)*residual
     for (unsigned int group_idx = 0; group_idx < group_size; group_idx++)
         {
         unsigned int j = m_group->getMemberIndex(group_idx);
@@ -102,37 +106,41 @@ void TwoStepRATTLENVE::integrateStepOne(unsigned int timestep)
 
 	Scalar lambda = 0.0;
         
-	Scalar3 next_pos = Scalar3(h_pos.data[j]);
+	Scalar3 next_pos = make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z);
 	Scalar3 normal = m_manifold->derivative(next_pos);
 
 	Scalar inv_mass = Scalar(1.0)/h_vel.data[j].w;
-	Scalar inv_alpha = -Scalar(1.0/2.0)*m_deltaT*m_deltaT*inv_mass;
+	Scalar deltaT_half = Scalar(1.0/2.0)*m_deltaT;
+	Scalar inv_alpha = -deltaT_half*m_deltaT*inv_mass;
 	inv_alpha = Scalar(1.0)/inv_alpha;
 
 	Scalar4 residual;
+	Scalar3 half_vel;
 	
 	unsigned int iteration = 0;
 	do
 	{
 	    iteration++;
-            vel_half.x = h_vel.data[j].x + Scalar(1.0)/Scalar(2.0)*m_deltaT*(h_accel.data[j].x-inv_mass*lambda*normal.x);
-            vel_half.y = h_vel.data[j].y + Scalar(1.0)/Scalar(2.0)*m_deltaT*(h_accel.data[j].y-inv_mass*lambda*normal.y);
-            vel_half.z = h_vel.data[j].z + Scalar(1.0)/Scalar(2.0)*m_deltaT*(h_accel.data[j].z-inv_mass*lambda*normal.z);
+            half_vel.x = h_vel.data[j].x + deltaT_half*(h_accel.data[j].x-inv_mass*lambda*normal.x);
+            half_vel.y = h_vel.data[j].y + deltaT_half*(h_accel.data[j].y-inv_mass*lambda*normal.y);
+            half_vel.z = h_vel.data[j].z + deltaT_half*(h_accel.data[j].z-inv_mass*lambda*normal.z);
 
-	    residual.x = h_pos.data[j].x - next_pos.x + m_deltaT*v_half.x;
-	    residual.y = h_pos.data[j].y - next_pos.y + m_deltaT*v_half.y;
-	    residual.z = h_pos.data[j].z - next_pos.z + m_deltaT*v_half.z;
-	    residual.w = m_manifold->implicit_function(next_pos.x);
+	    residual.x = h_pos.data[j].x - next_pos.x + m_deltaT*half_vel.x;
+	    residual.y = h_pos.data[j].y - next_pos.y + m_deltaT*half_vel.y;
+	    residual.z = h_pos.data[j].z - next_pos.z + m_deltaT*half_vel.z;
+	    residual.w = m_manifold->implicit_function(next_pos);
 
             Scalar3 next_normal =  m_manifold->derivative(next_pos);
-	    Scalar beta = (residual.w + dot(next_normal,Scalar3(residual)))/dot(next_normal,normal);
+	    Scalar nndotr = dot(next_normal,make_scalar3(residual.x,residual.y,residual.z));
+	    Scalar nndotn = dot(next_normal,normal);
+	    Scalar beta = (residual.w + nndotr)/nndotn;
 	    
             next_pos.x -= (beta*normal.x - residual.x);   
             next_pos.y -= (beta*normal.y - residual.y);   
             next_pos.z -= (beta*normal.z - residual.z);   
 	    lambda -= beta*inv_alpha;
 
-	} while (maxNorm(residual) > eta && iteration < maxiteration );
+	} while (maxNorm(residual) > m_eta && iteration < maxiteration );
 
         Scalar dx = next_pos.x - h_pos.data[j].x;
         Scalar dy = next_pos.y - h_pos.data[j].y;
@@ -154,9 +162,9 @@ void TwoStepRATTLENVE::integrateStepOne(unsigned int timestep)
         h_pos.data[j].y += dy;
         h_pos.data[j].z += dz;
 
-        h_vel.data[j].x += vel_half.x;
-        h_vel.data[j].y += vel_half.y;
-        h_vel.data[j].z += vel_half.z;
+        h_vel.data[j].x += half_vel.x;
+        h_vel.data[j].y += half_vel.y;
+        h_vel.data[j].z += half_vel.z;
         }
 
     // particles may have been moved slightly outside the box by the above steps, wrap them back into place
@@ -298,36 +306,44 @@ void TwoStepRATTLENVE::integrateStepTwo(unsigned int timestep)
 
     ArrayHandle<Scalar4> h_vel(m_pdata->getVelocities(), access_location::host, access_mode::readwrite);
     ArrayHandle<Scalar3> h_accel(m_pdata->getAccelerations(), access_location::host, access_mode::readwrite);
+    ArrayHandle<Scalar4> h_pos(m_pdata->getPositions(), access_location::host, access_mode::readwrite);
 
     ArrayHandle<Scalar4> h_net_force(net_force, access_location::host, access_mode::read);
 
+    unsigned int maxiteration = 10;
+
     // v(t+deltaT) = v(t+deltaT/2) + 1/2 * a(t+deltaT)*deltaT
+    // iterative: v(t+deltaT) = v(t+deltaT/2) - J^(-1)*residual
     for (unsigned int group_idx = 0; group_idx < group_size; group_idx++)
         {
         unsigned int j = m_group->getMemberIndex(group_idx);
 
-        if (m_zero_force)
+
+	Scalar mass = h_vel.data[j].w;
+	Scalar inv_mass = Scalar(1.0)/mass;
+        
+	if (m_zero_force)
             {
             h_accel.data[j].x = h_accel.data[j].y = h_accel.data[j].z = 0.0;
             }
         else
             {
             // first, calculate acceleration from the net force
-            Scalar minv = Scalar(1.0) / h_vel.data[j].w;
-            h_accel.data[j].x = h_net_force.data[j].x*minv;
-            h_accel.data[j].y = h_net_force.data[j].y*minv;
-            h_accel.data[j].z = h_net_force.data[j].z*minv;
+            h_accel.data[j].x = h_net_force.data[j].x*inv_mass;
+            h_accel.data[j].y = h_net_force.data[j].y*inv_mass;
+            h_accel.data[j].z = h_net_force.data[j].z*inv_mass;
             }
 
            Scalar mu = 0;
            Scalar inv_alpha = -Scalar(1.0/2.0)*m_deltaT;
 	   inv_alpha = Scalar(1.0)/inv_alpha;
    
-           Scalar3 normal = m_manifold->derivative(Scalar3(h_pos.data[j]));
+           Scalar3 normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
    
-           Scalar3 next_vel = Scalar3(h_vel.data[j]) + Scalar(1.0/2.0)*m_deltaT*Scalar3(h_accel.data[j]);
-	   Scalar mass = h_vel.data[j].w;
-	   Scalar inv_mass = Scalar(1.0)/mass;
+           Scalar3 next_vel; 
+           next_vel.x = h_vel.data[j].x + Scalar(1.0/2.0)*m_deltaT*h_accel.data[j].x;
+           next_vel.y = h_vel.data[j].y + Scalar(1.0/2.0)*m_deltaT*h_accel.data[j].y;
+           next_vel.z = h_vel.data[j].z + Scalar(1.0/2.0)*m_deltaT*h_accel.data[j].z;
    
            Scalar4 residual;
            Scalar3 vel_dot;
@@ -336,27 +352,29 @@ void TwoStepRATTLENVE::integrateStepTwo(unsigned int timestep)
            do
                {
                iteration++;
-               v_dot.x = h_accel.data[j].x - mu*inv_mass*normal.x;
-               v_dot.y = h_accel.data[j].y - mu*inv_mass*normal.y;
-               v_dot.z = h_accel.data[j].z - mu*inv_mass*normal.z;
+               vel_dot.x = h_accel.data[j].x - mu*inv_mass*normal.x;
+               vel_dot.y = h_accel.data[j].y - mu*inv_mass*normal.y;
+               vel_dot.z = h_accel.data[j].z - mu*inv_mass*normal.z;
 
-               resid.x = h_vel.data[j].x - next_v.x + Scalar(1.0/2.0)*m_deltaT*v_dot.x;
-               resid.y = h_vel.data[j].y - next_v.y + Scalar(1.0/2.0)*m_deltaT*v_dot.y;
-               resid.z = h_vel.data[j].z - next_v.z + Scalar(1.0/2.0)*m_deltaT*v_dot.z;
-               resid.w = dot(normal, v_next);
+               residual.x = h_vel.data[j].x - next_vel.x + Scalar(1.0/2.0)*m_deltaT*vel_dot.x;
+               residual.y = h_vel.data[j].y - next_vel.y + Scalar(1.0/2.0)*m_deltaT*vel_dot.y;
+               residual.z = h_vel.data[j].z - next_vel.z + Scalar(1.0/2.0)*m_deltaT*vel_dot.z;
+               residual.w = dot(normal, next_vel)*inv_mass;
    
-               Scalar beta = (mass*resid.w + dot(normal, Scalar3(residual)))/dot(normal,normal);
-               next_v.x -= (normal.x*beta-residual.x);
-               next_v.y -= (normal.y*beta-residual.y);
-               next_v.z -= (normal.z*beta-residual.z);
-               mu -=  beat*inv_alpha;
+	       Scalar ndotr = dot(normal,make_scalar3(residual.x,residual.y,residual.z));
+	       Scalar ndotn = dot(normal,normal);
+               Scalar beta = (mass*residual.w + ndotr)/ndotn;
+               next_vel.x -= (normal.x*beta-residual.x);
+               next_vel.y -= (normal.y*beta-residual.y);
+               next_vel.z -= (normal.z*beta-residual.z);
+               mu -=  beta*inv_alpha;
    
-	       } while (maxNorm(residual)*mass > eta && iteration < maxiteration );
+	       } while (maxNorm(residual)*mass > m_eta && iteration < maxiteration );
    
            // then, update the velocity
-           h_vel.data[j].x = v_next.x;
-           h_vel.data[j].y = v_next.y;
-           h_vel.data[j].z = v_next.z;
+           h_vel.data[j].x = next_vel.x;
+           h_vel.data[j].y = next_vel.y;
+           h_vel.data[j].z = next_vel.z;
 
         // limit the movement of the particles
         if (m_limit)
@@ -415,7 +433,7 @@ void TwoStepRATTLENVE::integrateStepTwo(unsigned int timestep)
 void export_TwoStepRATTLENVE(py::module& m)
     {
     py::class_<TwoStepRATTLENVE, std::shared_ptr<TwoStepRATTLENVE> >(m, "TwoStepRATTLENVE", py::base<IntegrationMethodTwoStep>())
-        .def(py::init< std::shared_ptr<SystemDefinition>, std::shared_ptr<ParticleGroup>, std::shared_ptr<Manifold>, bool >())
+        .def(py::init< std::shared_ptr<SystemDefinition>, std::shared_ptr<ParticleGroup>, std::shared_ptr<Manifold>, bool, Scalar >())
         .def("setLimit", &TwoStepRATTLENVE::setLimit)
         .def("removeLimit", &TwoStepRATTLENVE::removeLimit)
         .def("setZeroForce", &TwoStepRATTLENVE::setZeroForce)
