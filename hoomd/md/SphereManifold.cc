@@ -47,7 +47,8 @@ Scalar SphereManifold::implicit_function(Scalar3 point)
        */
 Scalar3 SphereManifold::derivative(Scalar3 point)
        {
-       return point - m_P;
+       Scalar3 delta = point - m_P;
+       return 2*delta;
        }
 
 void SphereManifold::validate()

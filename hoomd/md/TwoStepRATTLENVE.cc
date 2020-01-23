@@ -7,9 +7,10 @@
 #include "TwoStepRATTLENVE.h"
 #include "hoomd/VectorMath.h"
 
-inline Scalar maxNorm(Scalar4 vec)
+inline Scalar maxNorm(Scalar3 vec, Scalar resid)
     {
-    return std::max(std::max(std::max(vec.x, vec.y), vec.z), vec.w);
+    Scalar vec_norm = sqrt(dot(vec,vec));
+    return std::max(vec_norm, abs(resid) );
     }
 
 
@@ -92,7 +93,7 @@ void TwoStepRATTLENVE::integrateStepOne(unsigned int timestep)
     ArrayHandle<Scalar3> h_accel(m_pdata->getAccelerations(), access_location::host, access_mode::readwrite);
     ArrayHandle<Scalar4> h_pos(m_pdata->getPositions(), access_location::host, access_mode::readwrite);
 
-    unsigned int maxiteration = 10;
+    //unsigned int maxiteration = 10;
 
 
     // perform the first half step of the RATTLE algorithm applied on velocity verlet
@@ -106,7 +107,11 @@ void TwoStepRATTLENVE::integrateStepOne(unsigned int timestep)
 
 	Scalar lambda = 0.0;
         
-	Scalar3 next_pos = make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z);
+	Scalar3 next_pos;
+	next_pos.x = h_pos.data[j].x;
+	next_pos.y = h_pos.data[j].y;
+	next_pos.z = h_pos.data[j].z;
+
 	Scalar3 normal = m_manifold->derivative(next_pos);
 
 	Scalar inv_mass = Scalar(1.0)/h_vel.data[j].w;
@@ -114,8 +119,10 @@ void TwoStepRATTLENVE::integrateStepOne(unsigned int timestep)
 	Scalar inv_alpha = -deltaT_half*m_deltaT*inv_mass;
 	inv_alpha = Scalar(1.0)/inv_alpha;
 
-	Scalar4 residual;
+	Scalar3 residual;
+	Scalar resid;
 	Scalar3 half_vel;
+
 	
 	unsigned int iteration = 0;
 	do
@@ -128,23 +135,35 @@ void TwoStepRATTLENVE::integrateStepOne(unsigned int timestep)
 	    residual.x = h_pos.data[j].x - next_pos.x + m_deltaT*half_vel.x;
 	    residual.y = h_pos.data[j].y - next_pos.y + m_deltaT*half_vel.y;
 	    residual.z = h_pos.data[j].z - next_pos.z + m_deltaT*half_vel.z;
-	    residual.w = m_manifold->implicit_function(next_pos);
+	    resid = m_manifold->implicit_function(next_pos);
 
             Scalar3 next_normal =  m_manifold->derivative(next_pos);
-	    Scalar nndotr = dot(next_normal,make_scalar3(residual.x,residual.y,residual.z));
+	    Scalar nndotr = dot(next_normal,residual);
+	    //Scalar nndotr = dot(normal,residual);
 	    Scalar nndotn = dot(next_normal,normal);
-	    Scalar beta = (residual.w + nndotr)/nndotn;
+	    //Scalar nndotn = dot(normal,normal);
+	    Scalar beta = (resid + nndotr)/nndotn;
 	    
-            next_pos.x -= (beta*normal.x - residual.x);   
-            next_pos.y -= (beta*normal.y - residual.y);   
-            next_pos.z -= (beta*normal.z - residual.z);   
-	    lambda -= beta*inv_alpha;
+            next_pos.x = next_pos.x - beta*normal.x + residual.x;   
+            next_pos.y = next_pos.y - beta*normal.y + residual.y;   
+            next_pos.z = next_pos.z - beta*normal.z + residual.z;
+	    lambda = lambda - beta*inv_alpha;
 
-	} while (maxNorm(residual) > m_eta && iteration < maxiteration );
+	} while (maxNorm(residual,resid) > m_eta);// && iteration < maxiteration );
 
-        Scalar dx = next_pos.x - h_pos.data[j].x;
-        Scalar dy = next_pos.y - h_pos.data[j].y;
-        Scalar dz = next_pos.z - h_pos.data[j].z;
+	//std::cout << sqrt(dot(residual,residual)) << " " << resid << std::endl;
+
+        h_vel.data[j].x = half_vel.x;
+        h_vel.data[j].y = half_vel.y;
+        h_vel.data[j].z = half_vel.z;
+	
+        //Scalar dx = next_pos.x - h_pos.data[j].x;
+        //Scalar dy = next_pos.y - h_pos.data[j].y;
+        //Scalar dz = next_pos.z - h_pos.data[j].z;
+
+        Scalar dx = m_deltaT*half_vel.x;
+        Scalar dy = m_deltaT*half_vel.y;
+        Scalar dz = m_deltaT*half_vel.z;
 
         // limit the movement of the particles
         if (m_limit)
@@ -162,9 +181,6 @@ void TwoStepRATTLENVE::integrateStepOne(unsigned int timestep)
         h_pos.data[j].y += dy;
         h_pos.data[j].z += dz;
 
-        h_vel.data[j].x += half_vel.x;
-        h_vel.data[j].y += half_vel.y;
-        h_vel.data[j].z += half_vel.z;
         }
 
     // particles may have been moved slightly outside the box by the above steps, wrap them back into place
@@ -304,9 +320,9 @@ void TwoStepRATTLENVE::integrateStepTwo(unsigned int timestep)
     if (m_prof)
         m_prof->push("RATTLENVE step 2");
 
+    ArrayHandle<Scalar4> h_pos(m_pdata->getPositions(), access_location::host, access_mode::readwrite);
     ArrayHandle<Scalar4> h_vel(m_pdata->getVelocities(), access_location::host, access_mode::readwrite);
     ArrayHandle<Scalar3> h_accel(m_pdata->getAccelerations(), access_location::host, access_mode::readwrite);
-    ArrayHandle<Scalar4> h_pos(m_pdata->getPositions(), access_location::host, access_mode::readwrite);
 
     ArrayHandle<Scalar4> h_net_force(net_force, access_location::host, access_mode::read);
 
@@ -339,13 +355,16 @@ void TwoStepRATTLENVE::integrateStepTwo(unsigned int timestep)
 	   inv_alpha = Scalar(1.0)/inv_alpha;
    
            Scalar3 normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
+
    
            Scalar3 next_vel; 
            next_vel.x = h_vel.data[j].x + Scalar(1.0/2.0)*m_deltaT*h_accel.data[j].x;
            next_vel.y = h_vel.data[j].y + Scalar(1.0/2.0)*m_deltaT*h_accel.data[j].y;
            next_vel.z = h_vel.data[j].z + Scalar(1.0/2.0)*m_deltaT*h_accel.data[j].z;
+
    
-           Scalar4 residual;
+           Scalar3 residual;
+           Scalar resid;
            Scalar3 vel_dot;
    
            unsigned int iteration = 0;
@@ -359,23 +378,30 @@ void TwoStepRATTLENVE::integrateStepTwo(unsigned int timestep)
                residual.x = h_vel.data[j].x - next_vel.x + Scalar(1.0/2.0)*m_deltaT*vel_dot.x;
                residual.y = h_vel.data[j].y - next_vel.y + Scalar(1.0/2.0)*m_deltaT*vel_dot.y;
                residual.z = h_vel.data[j].z - next_vel.z + Scalar(1.0/2.0)*m_deltaT*vel_dot.z;
-               residual.w = dot(normal, next_vel)*inv_mass;
+               resid = dot(normal, next_vel)*inv_mass;
    
-	       Scalar ndotr = dot(normal,make_scalar3(residual.x,residual.y,residual.z));
+	       Scalar ndotr = dot(normal,residual);
 	       Scalar ndotn = dot(normal,normal);
-               Scalar beta = (mass*residual.w + ndotr)/ndotn;
-               next_vel.x -= (normal.x*beta-residual.x);
-               next_vel.y -= (normal.y*beta-residual.y);
-               next_vel.z -= (normal.z*beta-residual.z);
-               mu -=  beta*inv_alpha;
+               Scalar beta = (mass*resid + ndotr)/ndotn;
+               next_vel.x = next_vel.x - normal.x*beta + residual.x;
+               next_vel.y = next_vel.y - normal.y*beta + residual.y;
+               next_vel.z = next_vel.z - normal.z*beta + residual.z;
+               mu =  mu - mass*beta*inv_alpha;
    
-	       } while (maxNorm(residual)*mass > m_eta && iteration < maxiteration );
+	       } while (maxNorm(residual,resid)*mass > m_eta);// && iteration < maxiteration );
    
-           // then, update the velocity
-           h_vel.data[j].x = next_vel.x;
-           h_vel.data[j].y = next_vel.y;
-           h_vel.data[j].z = next_vel.z;
 
+	   //std::cout << sqrt(dot(residual,residual)) << " " << resid << std::endl;
+
+           // then, update the velocity
+           //h_vel.data[j].x = next_vel.x;
+           //h_vel.data[j].y = next_vel.y;
+           //h_vel.data[j].z = next_vel.z;
+
+           h_vel.data[j].x += Scalar(1.0/2.0)*m_deltaT*(h_accel.data[j].x - mu*inv_mass*normal.x);
+           h_vel.data[j].y += Scalar(1.0/2.0)*m_deltaT*(h_accel.data[j].y - mu*inv_mass*normal.y);
+           h_vel.data[j].z += Scalar(1.0/2.0)*m_deltaT*(h_accel.data[j].z - mu*inv_mass*normal.z);
+	
         // limit the movement of the particles
         if (m_limit)
             {
