@@ -56,6 +56,7 @@
 #include "TwoStepNPTMTK.h"
 #include "TwoStepNVE.h"
 #include "TwoStepNVTMTK.h"
+#include "TwoStepRATTLELangevin.h"
 #include "TwoStepRATTLENVE.h"
 #include "WallData.h"
 #include "ZeroMomentumUpdater.h"
@@ -381,6 +382,7 @@ PYBIND11_MODULE(_md, m)
     export_TwoStepLangevin(m);
     export_TwoStepBD(m);
     export_TwoStepNPTMTK(m);
+    export_TwoStepRATTLELangevin(m);
     export_TwoStepRATTLENVE(m);
     export_Berendsen(m);
     export_Enforce2DUpdater(m);

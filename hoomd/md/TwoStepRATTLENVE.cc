@@ -13,8 +13,6 @@ inline Scalar maxNorm(Scalar3 vec, Scalar resid)
     return std::max(vec_norm, abs(resid) );
     }
 
-
-
 using namespace std;
 namespace py = pybind11;
 
@@ -26,7 +24,7 @@ namespace py = pybind11;
     \param group The group of particles this integration method is to work on
     \param manifold The manifold describing the constraint during the RATTLE integration method
     \param skip_restart Skip initialization of the restart information
-    \param skip_restart Skip initialization of the restart information
+    \param eta Tolerance for the RATTLE iteration algorithm
 */
 TwoStepRATTLENVE::TwoStepRATTLENVE(std::shared_ptr<SystemDefinition> sysdef,
                        std::shared_ptr<ParticleGroup> group,
@@ -140,9 +138,7 @@ void TwoStepRATTLENVE::integrateStepOne(unsigned int timestep)
 
             Scalar3 next_normal =  m_manifold->derivative(next_pos);
 	    Scalar nndotr = dot(next_normal,residual);
-	    //Scalar nndotr = dot(normal,residual);
 	    Scalar nndotn = dot(next_normal,normal);
-	    //Scalar nndotn = dot(normal,normal);
 	    Scalar beta = (resid + nndotr)/nndotn;
 
             next_pos.x = next_pos.x - beta*normal.x + residual.x;   
@@ -152,15 +148,10 @@ void TwoStepRATTLENVE::integrateStepOne(unsigned int timestep)
 	 
 	} while (maxNorm(residual,resid) > m_eta && iteration < maxiteration );
 
-
         h_vel.data[j].x = half_vel.x;
         h_vel.data[j].y = half_vel.y;
         h_vel.data[j].z = half_vel.z;
 	
-        //Scalar dx = next_pos.x - h_pos.data[j].x;
-        //Scalar dy = next_pos.y - h_pos.data[j].y;
-        //Scalar dz = next_pos.z - h_pos.data[j].z;
-
         Scalar dx = m_deltaT*half_vel.x;
         Scalar dy = m_deltaT*half_vel.y;
         Scalar dz = m_deltaT*half_vel.z;
@@ -355,7 +346,6 @@ void TwoStepRATTLENVE::integrateStepTwo(unsigned int timestep)
 	   inv_alpha = Scalar(1.0)/inv_alpha;
    
            Scalar3 normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
-
    
            Scalar3 next_vel; 
            next_vel.x = h_vel.data[j].x + Scalar(1.0/2.0)*m_deltaT*h_accel.data[j].x;
@@ -392,10 +382,6 @@ void TwoStepRATTLENVE::integrateStepTwo(unsigned int timestep)
    
 
            // then, update the velocity
-           //h_vel.data[j].x = next_vel.x;
-           //h_vel.data[j].y = next_vel.y;
-           //h_vel.data[j].z = next_vel.z;
-
            h_vel.data[j].x += Scalar(1.0/2.0)*m_deltaT*(h_accel.data[j].x - mu*inv_mass*normal.x);
            h_vel.data[j].y += Scalar(1.0/2.0)*m_deltaT*(h_accel.data[j].y - mu*inv_mass*normal.y);
            h_vel.data[j].z += Scalar(1.0/2.0)*m_deltaT*(h_accel.data[j].z - mu*inv_mass*normal.z);
