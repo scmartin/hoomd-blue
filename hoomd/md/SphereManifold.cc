@@ -15,8 +15,8 @@ using namespace std;
 */
 
 /*!
-    \param P position of the sphere
     \param r radius of the sphere
+    \param P position of the sphere
 */
 SphereManifold::SphereManifold(std::shared_ptr<SystemDefinition> sysdef,
                                Scalar r,

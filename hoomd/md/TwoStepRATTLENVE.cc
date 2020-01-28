@@ -26,6 +26,7 @@ namespace py = pybind11;
     \param group The group of particles this integration method is to work on
     \param manifold The manifold describing the constraint during the RATTLE integration method
     \param skip_restart Skip initialization of the restart information
+    \param skip_restart Skip initialization of the restart information
 */
 TwoStepRATTLENVE::TwoStepRATTLENVE(std::shared_ptr<SystemDefinition> sysdef,
                        std::shared_ptr<ParticleGroup> group,
@@ -93,7 +94,7 @@ void TwoStepRATTLENVE::integrateStepOne(unsigned int timestep)
     ArrayHandle<Scalar3> h_accel(m_pdata->getAccelerations(), access_location::host, access_mode::readwrite);
     ArrayHandle<Scalar4> h_pos(m_pdata->getPositions(), access_location::host, access_mode::readwrite);
 
-    //unsigned int maxiteration = 10;
+    unsigned int maxiteration = 10;
 
 
     // perform the first half step of the RATTLE algorithm applied on velocity verlet
@@ -143,15 +144,14 @@ void TwoStepRATTLENVE::integrateStepOne(unsigned int timestep)
 	    Scalar nndotn = dot(next_normal,normal);
 	    //Scalar nndotn = dot(normal,normal);
 	    Scalar beta = (resid + nndotr)/nndotn;
-	    
+
             next_pos.x = next_pos.x - beta*normal.x + residual.x;   
             next_pos.y = next_pos.y - beta*normal.y + residual.y;   
             next_pos.z = next_pos.z - beta*normal.z + residual.z;
 	    lambda = lambda - beta*inv_alpha;
+	 
+	} while (maxNorm(residual,resid) > m_eta && iteration < maxiteration );
 
-	} while (maxNorm(residual,resid) > m_eta);// && iteration < maxiteration );
-
-	//std::cout << sqrt(dot(residual,residual)) << " " << resid << std::endl;
 
         h_vel.data[j].x = half_vel.x;
         h_vel.data[j].y = half_vel.y;
@@ -379,7 +379,7 @@ void TwoStepRATTLENVE::integrateStepTwo(unsigned int timestep)
                residual.y = h_vel.data[j].y - next_vel.y + Scalar(1.0/2.0)*m_deltaT*vel_dot.y;
                residual.z = h_vel.data[j].z - next_vel.z + Scalar(1.0/2.0)*m_deltaT*vel_dot.z;
                resid = dot(normal, next_vel)*inv_mass;
-   
+
 	       Scalar ndotr = dot(normal,residual);
 	       Scalar ndotn = dot(normal,normal);
                Scalar beta = (mass*resid + ndotr)/ndotn;
@@ -387,11 +387,9 @@ void TwoStepRATTLENVE::integrateStepTwo(unsigned int timestep)
                next_vel.y = next_vel.y - normal.y*beta + residual.y;
                next_vel.z = next_vel.z - normal.z*beta + residual.z;
                mu =  mu - mass*beta*inv_alpha;
-   
-	       } while (maxNorm(residual,resid)*mass > m_eta);// && iteration < maxiteration );
-   
 
-	   //std::cout << sqrt(dot(residual,residual)) << " " << resid << std::endl;
+	       } while (maxNorm(residual,resid)*mass > m_eta && iteration < maxiteration );
+   
 
            // then, update the velocity
            //h_vel.data[j].x = next_vel.x;
@@ -401,6 +399,7 @@ void TwoStepRATTLENVE::integrateStepTwo(unsigned int timestep)
            h_vel.data[j].x += Scalar(1.0/2.0)*m_deltaT*(h_accel.data[j].x - mu*inv_mass*normal.x);
            h_vel.data[j].y += Scalar(1.0/2.0)*m_deltaT*(h_accel.data[j].y - mu*inv_mass*normal.y);
            h_vel.data[j].z += Scalar(1.0/2.0)*m_deltaT*(h_accel.data[j].z - mu*inv_mass*normal.z);
+
 	
         // limit the movement of the particles
         if (m_limit)

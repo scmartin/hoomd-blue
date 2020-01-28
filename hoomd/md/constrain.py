@@ -565,3 +565,26 @@ class sphere_manifold(_manifold):
         _manifold.__init__(self);
         P = _hoomd.make_scalar3(P[0], P[1], P[2]);
         self.cpp_manifold = _md.SphereManifold(hoomd.context.current.system_definition, r, P );
+
+class tpms_manifold(_manifold):
+    def __init__(self,surface,N=None,Nx=None,Ny=None,Nz=None):
+        hoomd.util.print_status_line();
+        # initialize the base class
+        _manifold.__init__(self);
+        surface = surface.upper();
+        surface_list = ['G','GYROID','D','DIAMOND','P','PRIMITIVE'];
+        if surface not in surface_list:
+            hoomd.context.msg.error("TPMS surface is not implemented\n");
+            raise RuntimeError('Error creating manifold');
+		
+        if N is not None:
+            Nx = Ny = Nz = N;
+
+        self.cpp_manifold = _md.TPMSManifold(hoomd.context.current.system_definition, surface, Nx, Ny, Nz );
+
+        # store metadata
+        self.surface = surface
+        self.Nx = Nx
+        self.Ny = Ny
+        self.Nz = Nz
+        self.metadata_fields = ['surface','Nx','Ny','Nz']

@@ -24,7 +24,7 @@ class PYBIND11_EXPORT SphereManifold : public Manifold
     {
     public:
         //! Constructs the compute
-        /*! \param r The r of the sphere.
+        /*! \param radius The r of the sphere.
             \param P The location of the sphere.
         */
         SphereManifold(std::shared_ptr<SystemDefinition> sysdef,

@@ -44,6 +44,7 @@
 #include "PPPMForceCompute.h"
 #include "QuaternionMath.h"
 #include "SphereManifold.h"
+#include "TPMSManifold.h"
 #include "TableAngleForceCompute.h"
 #include "TableDihedralForceCompute.h"
 #include "TablePotential.h"
@@ -292,6 +293,7 @@ PYBIND11_MODULE(_md, m)
     export_OneDConstraint(m);
     export_Manifold(m);
     export_SphereManifold(m);
+    export_TPMSManifold(m);
     export_MolecularForceCompute(m);
     export_ForceDistanceConstraint(m);
     export_ForceComposite(m);
