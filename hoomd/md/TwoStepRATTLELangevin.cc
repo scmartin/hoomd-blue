@@ -341,8 +341,12 @@ void TwoStepRATTLELangevin::integrateStepTwo(unsigned int timestep)
         // first, calculate the BD forces on manifold
         // Generate two random numbers
         hoomd::UniformDistribution<Scalar> uniform(Scalar(-1), Scalar(1));
-        Scalar ru = uniform(rng);
-        Scalar rv = uniform(rng);
+
+        //Scalar ru = uniform(rng);
+        //Scalar rv = uniform(rng);
+        Scalar rx = uniform(rng);
+        Scalar ry = uniform(rng);
+        Scalar rz = uniform(rng);
 
         Scalar gamma;
         if (m_use_lambda)
@@ -359,22 +363,26 @@ void TwoStepRATTLELangevin::integrateStepTwo(unsigned int timestep)
             coeff = Scalar(0.0);
 
 	//calculate tangent vectors
-	Scalar3 normal, tu, tv;
-        normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
-        if( normal.z*normal.z < 0.99 ) tu = make_scalar3(normal.y,-normal.x,0);
-	else tu = make_scalar3(0,-normal.z,normal.y); 
-        Scalar tang = ru*coeff/fast::sqrt(dot(tu,tu));
-        tu = tu*tang;
-        tv.x = normal.y*tu.z-normal.z*tu.y;
-        tv.y = normal.z*tu.x-normal.x*tu.z;
-        tv.z = normal.x*tu.y-normal.y*tu.x;
-        tang = rv*coeff/fast::sqrt(dot(tv,tv));
-        tv = tv*tang;
-	
+	//Scalar3 normal, tu, tv;
+        Scalar3 normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
+        //if( normal.z*normal.z < 0.99 ) tu = make_scalar3(normal.y,-normal.x,0);
+	//else tu = make_scalar3(0,-normal.z,normal.y); 
+        //Scalar tang = ru*coeff/fast::sqrt(dot(tu,tu));
+        //tu = tu*tang;
+        //tv.x = normal.y*tu.z-normal.z*tu.y;
+        //tv.y = normal.z*tu.x-normal.x*tu.z;
+        //tv.z = normal.x*tu.y-normal.y*tu.x;
+        //tang = rv*coeff/fast::sqrt(dot(tv,tv));
+        //tv = tv*tang;
+	//
 
-        Scalar bd_fx = tu.x + tv.x - gamma*h_vel.data[j].x;
-        Scalar bd_fy = tu.y + tv.y - gamma*h_vel.data[j].y;
-        Scalar bd_fz = tu.z + tv.z - gamma*h_vel.data[j].z;
+        //Scalar bd_fx = tu.x + tv.x - gamma*h_vel.data[j].x;
+        //Scalar bd_fy = tu.y + tv.y - gamma*h_vel.data[j].y;
+        //Scalar bd_fz = tu.z + tv.z - gamma*h_vel.data[j].z;
+
+        Scalar bd_fx = rx*coeff - gamma*h_vel.data[j].x;
+        Scalar bd_fy = ry*coeff - gamma*h_vel.data[j].y;
+        Scalar bd_fz = rz*coeff - gamma*h_vel.data[j].z;
 
         // then, calculate acceleration from the net force
 	Scalar mass = h_vel.data[j].w;
