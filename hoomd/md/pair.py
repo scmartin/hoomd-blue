@@ -2825,19 +2825,17 @@ class fourier(pair):
         a_1 = \sum_{n=2}^4 (-1)^n a_n cos(\frac{n \pi r}{r_{cut}})
         \end{eqnarray*}
 
-        \begin{eqnarray*}
-        b_1 = \sum_{n=2}^4 n (-1)^n b_n cos(\frac{n \pi r}{r_{cut}})
-        \end{eqnarray*}
 
-        is calculated to enforce close to zero value at r_cut.
+        is calculated to enforce zero value at r_cut.
 
     See :py:class:`pair` for details on how forces are calculated and the available energy shifting and smoothing modes.
     Use :py:meth:`pair_coeff.set <coeff.set>` to set potential coefficients.
 
     The following coefficients must be set per unique pair of particle types:
 
-    - :math:`a` - *a* (array of 3 values corresponding to a2, a3 and a4 in the Fourier series, unitless)
-    - :math:`a` - *b* (array of 3 values corresponding to b2, b3 and b4 in the Fourier series, unitless)
+    - :math:`a` - *a* (array of up to 20 values corresponding to a2 ... a21 in the Fourier series, unitless)
+    - :math:`b` - *b* (array of up to 20 values corresponding to b2 ... b21 in the Fourier series, unitless)
+    - :math:`degree` - degree of the Fourier serier to be used, degree should match the length of list *a* and *b*, unitless)
     - :math:`r_{\mathrm{cut}}` - *r_cut* (in distance units)
       - *optional*: defaults to the global r_cut specified in the pair command
     - :math:`r_{\mathrm{on}}`- *r_on* (in distance units)
@@ -2847,7 +2845,7 @@ class fourier(pair):
 
         nl = nlist.cell()
         fourier = pair.fourier(r_cut=3.0, nlist=nl)
-        fourier.pair_coeff.set('A', 'A', a=[a2,a3,a4], b=[b2,b3,b4])
+        fourier.pair_coeff.set('A', 'A', a=[a2,a3,a4], b=[b2,b3,b4], degree=3)
     """
 
     def __init__(self, r_cut, nlist, name=None):
@@ -2870,12 +2868,19 @@ class fourier(pair):
         hoomd.context.current.system.addCompute(self.cpp_force, self.force_name);
 
         # setup the coefficent options
-
-        self.required_coeffs = ['fourier_a','fourier_b'];
-        # self.pair_coeff.set_default_coeff('alpha', 1.0);
+        self.required_coeffs = ['fourier_a','fourier_b', 'degree'];
 
     def process_coeff(self, coeff):
-        fourier_a = coeff['fourier_a'];
-        fourier_b = coeff['fourier_b'];
+        degree = coeff['degree']
+        if (not isinstance(degree, int)) or degree > 21 or degree <= 0:
+            raise ValueError('Degree should be an integer between 1 and 21.')
+        if degree != len(coeff['fourier_a'])+1 or degree != len(coeff['fourier_b'])+1:
+            raise ValueError('Degree should be equal to len(a)+1.')
+        max_length = 20
+        fourier_a = [0] * max_length
+        fourier_b = [0] * max_length
+        fourier_a[:degree] = coeff['fourier_a'];
+        fourier_b[:degree] = coeff['fourier_b'];
 
-        return _md.make_pair_fourier_params(fourier_a,fourier_b);
+
+        return _md.make_pair_fourier_params(fourier_a,fourier_b, degree);

@@ -124,14 +124,16 @@ void export_tersoff_params(py::module& m)
 
 
 //! Function to make the Fourier parameter type
-inline pair_fourier_params make_pair_fourier_params(py::list a, py::list b)
+inline pair_fourier_params make_pair_fourier_params(py::list a, py::list b, py::int_ degree)
     {
     pair_fourier_params retval;
-    for (int i = 0; i < 3; ++i)
+    Scalar MAX_LENGTH = 20;
+    for (int i = 0; i < MAX_LENGTH; ++i)
         {
         retval.a[i] = py::cast<Scalar>(a[i]);
         retval.b[i] = py::cast<Scalar>(b[i]);
         }
+    retval.degree = py::cast<Scalar>(degree);
     return retval;
     }
 

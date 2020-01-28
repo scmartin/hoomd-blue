@@ -35,25 +35,26 @@
 
     EvaluatorPairFourier evaluates the function:
     \f[ V_{\mathrm{Fourier}}(r) = \frac{1}{r^{12}}
-    + \frac{1}{r^2}\sum_{n=1}^4 [a_n cos(\frac{n \pi r}{r_{cut}})
+    + \frac{1}{r^2}\sum_{n=1}^d [a_n cos(\frac{n \pi r}{r_{cut}})
     + b_n sin(\frac{n \pi r}{r_{cut}})] \f]
 
     where:
     \f[ a_1 = \sum_{n=2}^4 (-1)^n a_n cos(\frac{n \pi r}{r_{cut}}) \f]
 
-    \f[ b_1 = \sum_{n=2}^4 n (-1)^n b_n cos(\frac{n \pi r}{r_{cut}}) \f]
-
     is calculated to enforce close to zero value at r_cut
 
-    The Fourier potential does not need diameter or charge. two sets of parameters: a and b (both list of size 3) are specified and stored in a pair_fourier_params type.
+    d is the degree of the fourier series up to 21
+
+    The Fourier potential does not need diameter or charge. two sets of parameters: a and b (both list of size up to 20 for a2/b2 to a21/b21) are specified and stored in a pair_fourier_params type.
     - \a a is placed in params.a,
     - \a b is placed in params.b.
 
 */
 struct pair_fourier_params
 {
-  Scalar a[3];      //!< Fourier component coefficents
-  Scalar b[3];      //!< Fourier component coefficents
+  Scalar a[20];      //!< Fourier component coefficents
+  Scalar b[20];      //!< Fourier component coefficents
+  Scalar degree;     //!< Fourier degree, up to 21
 };
 
 class EvaluatorPairFourier
@@ -114,10 +115,9 @@ class EvaluatorPairFourier
                 Scalar r12inv = r3inv * r3inv * r3inv * r3inv;
                 Scalar a1 = 0;
                 Scalar b1 = 0;
-                for (int i=2; i<5; i++)
+                for (int i=2; i<=params.degree; i++)
                     {
                     a1 = a1 + fast::pow(Scalar(-1),Scalar(i)) * params.a[i-2];
-                    b1 = b1 + i * fast::pow(Scalar(-1),Scalar(i)) * params.b[i-2];
                     }
                 Scalar theta = x;
                 Scalar s;
@@ -126,7 +126,7 @@ class EvaluatorPairFourier
                 Scalar fourier_part = a1 * c + b1 * s;
                 force_divr = a1 * s - b1 * c;
 
-                for (int i=2; i<5; i++)
+                for (int i=2; i<=params.degree; i++)
                     {
                     theta = Scalar(i) * x;
                     fast::sincos(theta, s, c);
@@ -164,7 +164,7 @@ class EvaluatorPairFourier
     protected:
         Scalar rsq;     //!< Stored rsq from the constructor
         Scalar rcutsq;  //!< Stored rcutsq from the constructor
-        const pair_fourier_params& params;      //!< Fourier component coefficents
+        const pair_fourier_params& params;      //!< Fourier component coefficents and degree
     };
 
 
