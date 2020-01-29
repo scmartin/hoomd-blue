@@ -56,6 +56,7 @@
 #include "TwoStepNPTMTK.h"
 #include "TwoStepNVE.h"
 #include "TwoStepNVTMTK.h"
+#include "TwoStepRATTLEBD.h"
 #include "TwoStepRATTLELangevin.h"
 #include "TwoStepRATTLENVE.h"
 #include "WallData.h"
@@ -382,6 +383,7 @@ PYBIND11_MODULE(_md, m)
     export_TwoStepLangevin(m);
     export_TwoStepBD(m);
     export_TwoStepNPTMTK(m);
+    export_TwoStepRATTLEBD(m);
     export_TwoStepRATTLELangevin(m);
     export_TwoStepRATTLENVE(m);
     export_Berendsen(m);

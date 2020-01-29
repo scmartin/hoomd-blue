@@ -342,8 +342,6 @@ void TwoStepRATTLELangevin::integrateStepTwo(unsigned int timestep)
         // Generate two random numbers
         hoomd::UniformDistribution<Scalar> uniform(Scalar(-1), Scalar(1));
 
-        //Scalar ru = uniform(rng);
-        //Scalar rv = uniform(rng);
         Scalar rx = uniform(rng);
         Scalar ry = uniform(rng);
         Scalar rz = uniform(rng);
@@ -364,7 +362,7 @@ void TwoStepRATTLELangevin::integrateStepTwo(unsigned int timestep)
 
 	//calculate tangent vectors
 	//Scalar3 normal, tu, tv;
-        Scalar3 normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
+        //normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
         //if( normal.z*normal.z < 0.99 ) tu = make_scalar3(normal.y,-normal.x,0);
 	//else tu = make_scalar3(0,-normal.z,normal.y); 
         //Scalar tang = ru*coeff/fast::sqrt(dot(tu,tu));
@@ -374,11 +372,7 @@ void TwoStepRATTLELangevin::integrateStepTwo(unsigned int timestep)
         //tv.z = normal.x*tu.y-normal.y*tu.x;
         //tang = rv*coeff/fast::sqrt(dot(tv,tv));
         //tv = tv*tang;
-	//
-
-        //Scalar bd_fx = tu.x + tv.x - gamma*h_vel.data[j].x;
-        //Scalar bd_fy = tu.y + tv.y - gamma*h_vel.data[j].y;
-        //Scalar bd_fz = tu.z + tv.z - gamma*h_vel.data[j].z;
+	
 
         Scalar bd_fx = rx*coeff - gamma*h_vel.data[j].x;
         Scalar bd_fy = ry*coeff - gamma*h_vel.data[j].y;
@@ -391,6 +385,7 @@ void TwoStepRATTLELangevin::integrateStepTwo(unsigned int timestep)
         h_accel.data[j].y = (h_net_force.data[j].y + bd_fy)*inv_mass;
         h_accel.data[j].z = (h_net_force.data[j].z + bd_fz)*inv_mass;
 
+        Scalar3 normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
 
         Scalar mu = 0;
         Scalar inv_alpha = -Scalar(1.0/2.0)*m_deltaT;

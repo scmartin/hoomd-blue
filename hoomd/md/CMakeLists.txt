@@ -39,6 +39,7 @@ set(_md_sources module-md.cc
                    TwoStepNPTMTK.cc
                    TwoStepNVE.cc
                    TwoStepNVTMTK.cc
+                   TwoStepRATTLEBD.cc
                    TwoStepRATTLELangevin.cc
                    TwoStepRATTLENVE.cc
                    ZeroMomentumUpdater.cc
@@ -166,6 +167,7 @@ set(_md_headers ActiveForceComputeGPU.h
                 TwoStepNVE.h
                 TwoStepNVTMTKGPU.h
                 TwoStepNVTMTK.h
+                TwoStepRATTLEBD.h
                 TwoStepRATTLELangevin.h
                 TwoStepRATTLENVE.h
                 WallData.h

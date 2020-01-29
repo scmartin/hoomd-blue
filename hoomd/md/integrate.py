@@ -1659,6 +1659,232 @@ class brownian(_integration_method):
             if a == type_list[i]:
                 self.cpp_method.setGamma_r(i,_hoomd.make_scalar3(*gamma_r));
 
+class brownian_rattle(_integration_method):
+    R""" RATTLE algorithm applied to Brownian dynamics
+
+    Args:
+        group (:py:mod:`hoomd.group`): Group of particles to apply this method to.
+        manifold (:py:mod:`hoomd.md.constrain.manifold`): Manifold on which particles are constraint during the integration steps.
+        kT (:py:mod:`hoomd.variant` or :py:obj:`float`): Temperature of the simulation (in energy units).
+        seed (int): Random seed to use for generating :math:`\vec{F}_\mathrm{R}`.
+        dscale (bool): Control :math:`\lambda` options. If 0 or False, use :math:`\gamma` values set per type. If non-zero, :math:`\gamma = \lambda d_i`.
+        noiseless_t (bool): If set true, there will be no translational noise (random force)
+        noiseless_r (bool): If set true, there will be no rotational noise (random torque)
+        eta (Scalar): (optional) Sets the tolerance of the RATTLE algorithm
+
+    :py:class:`brownian` integrates particles forward in time according to the overdamped Langevin equations of motion,
+    sometimes called Brownian dynamics, or the diffusive limit.
+
+    .. math::
+
+        \frac{d\vec{x}}{dt} = \frac{\vec{F}_\mathrm{C} + \vec{F}_\mathrm{R}}{\gamma}
+
+        \langle \vec{F}_\mathrm{R} \rangle = 0
+
+        \langle |\vec{F}_\mathrm{R}|^2 \rangle = 2 d k T \gamma / \delta t
+
+        \langle \vec{v}(t) \rangle = 0
+
+        \langle |\vec{v}(t)|^2 \rangle = d k T / m
+
+
+    where :math:`\vec{F}_\mathrm{C}` is the force on the particle from all potentials and constraint forces,
+    :math:`\gamma` is the drag coefficient, :math:`\vec{F}_\mathrm{R}`
+    is a uniform random force, :math:`\vec{v}` is the particle's velocity, and :math:`d` is the dimensionality
+    of the system. The magnitude of the random force is chosen via the fluctuation-dissipation theorem
+    to be consistent with the specified drag and temperature, :math:`T`.
+    When :math:`kT=0`, the random force :math:`\vec{F}_\mathrm{R}=0`.
+
+    :py:class:`brownian` generates random numbers by hashing together the particle tag, user seed, and current
+    time step index. See `C. L. Phillips et. al. 2011 <http://dx.doi.org/10.1016/j.jcp.2011.05.021>`_ for more
+    information.
+
+    .. attention::
+        Change the seed if you reset the simulation time step to 0. If you keep the same seed, the simulation
+        will continue with the same sequence of random numbers used previously and may cause unphysical correlations.
+
+        For MPI runs: all ranks other than 0 ignore the seed input and use the value of rank 0.
+
+    :py:class:`brownian` uses the integrator from `I. Snook, The Langevin and Generalised Langevin Approach to the Dynamics of
+    Atomic, Polymeric and Colloidal Systems, 2007, section 6.2.5 <http://dx.doi.org/10.1016/B978-0-444-52129-3.50028-6>`_,
+    with the exception that :math:`\vec{F}_\mathrm{R}` is drawn from a uniform random number distribution.
+
+    In Brownian dynamics, particle velocities are completely decoupled from positions. At each time step,
+    :py:class:`brownian` draws a new velocity distribution consistent with the current set temperature so that
+    :py:class:`hoomd.compute.thermo` will report appropriate temperatures and pressures if logged or needed by other
+    commands.
+
+    Brownian dynamics neglects the acceleration term in the Langevin equation. This assumption is valid when
+    overdamped: :math:`\frac{m}{\gamma} \ll \delta t`. Use :py:class:`langevin` if your system is not overdamped.
+
+    You can specify :math:`\gamma` in two ways:
+
+    1. Use :py:class:`set_gamma()` to specify it directly, with independent values for each particle type in the system.
+    2. Specify :math:`\lambda` which scales the particle diameter to :math:`\gamma = \lambda d_i`. The units of
+       :math:`\lambda` are mass / distance / time.
+
+    :py:class:`brownian` must be used with integrate.mode_standard.
+
+    *kT* can be a variant type, allowing for temperature ramps in simulation runs.
+
+    A :py:class:`hoomd.compute.thermo` is automatically created and associated with *group*.
+
+    Examples::
+
+        all = group.all();
+	sphere = constrain.sphere_manifold(r=10,P=(0,0,0))
+        integrator = integrate.brownian_rattle(group=all, manifold=sphere, kT=1.0, seed=5)
+        integrator = integrate.brownian_rattle(group=all, manifold=sphere, kT=1.0, dscale=1.5)
+        typeA = group.type('A');
+        integrator = integrate.brownian(group=typeA, manifold=sphere, kT=hoomd.variant.linear_interp([(0, 4.0), (1e6, 1.0)]), seed=10, eta=0.000001)
+
+    """
+    def __init__(self, group, manifold, kT, seed, dscale=False, noiseless_t=False, noiseless_r=False, eta=0.000001):
+        hoomd.util.print_status_line();
+
+        # initialize base class
+        _integration_method.__init__(self);
+
+        # setup the variant inputs
+        kT = hoomd.variant._setup_variant_input(kT);
+
+        # create the compute thermo
+        hoomd.compute._get_unique_thermo(group=group);
+
+        if dscale is False or dscale == 0:
+            use_lambda = False;
+        else:
+            use_lambda = True;
+
+        # initialize the reflected c++ class
+        if not hoomd.context.exec_conf.isCUDAEnabled():
+            self.cpp_method = _md.TwoStepRATTLEBD(hoomd.context.current.system_definition,
+                                   group.cpp_group,
+				   manifold.cpp_manifold,
+                                   kT.cpp_variant,
+                                   seed,
+                                   use_lambda,
+                                   float(dscale),
+                                   noiseless_t,
+                                   noiseless_r,
+				   eta);
+        else:
+            raise RuntimeError("Not supported on GPU yet");
+        #    self.cpp_method = _md.TwoStepRATTLEBDGPU(hoomd.context.current.system_definition,
+        #                           group.cpp_group,
+	#			    manifold.cpp_manifold,
+        #                           kT.cpp_variant,
+        #                           seed,
+        #                           use_lambda,
+        #                           float(dscale),
+        #                           noiseless_t,
+        #                           noiseless_r,
+	#			    eta);
+
+        self.cpp_method.validateGroup()
+
+        # store metadata
+        self.group = group
+        self.manifold = manifold
+        self.kT = kT
+        self.seed = seed
+        self.dscale = dscale
+        self.noiseless_t = noiseless_t
+        self.noiseless_r = noiseless_r
+        self.eta = eta
+        self.metadata_fields = ['group', 'manifold', 'kT', 'seed', 'dscale','noiseless_t','noiseless_r', 'eta']
+
+    def set_params(self, kT=None):
+        R""" Change langevin integrator parameters.
+
+        Args:
+            kT (:py:mod:`hoomd.variant` or :py:obj:`float`): New temperature (if set) (in energy units).
+
+        Examples::
+
+            integrator.set_params(kT=2.0)
+
+        """
+        hoomd.util.print_status_line();
+        self.check_initialization();
+
+        # change the parameters
+        if kT is not None:
+            # setup the variant inputs
+            kT = hoomd.variant._setup_variant_input(kT);
+            self.cpp_method.setT(kT.cpp_variant);
+            self.kT = kT
+
+    def set_gamma(self, a, gamma):
+        R""" Set gamma for a particle type.
+
+        Args:
+            a (str): Particle type name
+            gamma (float): :math:`\gamma` for particle type a (in units of force/velocity)
+
+        :py:meth:`set_gamma()` sets the coefficient :math:`\gamma` for a single particle type, identified
+        by name. The default is 1.0 if not specified for a type.
+
+        It is not an error to specify gammas for particle types that do not exist in the simulation.
+        This can be useful in defining a single simulation script for many different types of particles
+        even when some simulations only include a subset.
+
+        Examples::
+
+            bd.set_gamma('A', gamma=2.0)
+
+        """
+        hoomd.util.print_status_line();
+        self.check_initialization();
+        a = str(a);
+
+        ntypes = hoomd.context.current.system_definition.getParticleData().getNTypes();
+        type_list = [];
+        for i in range(0,ntypes):
+            type_list.append(hoomd.context.current.system_definition.getParticleData().getNameByType(i));
+
+        # change the parameters
+        for i in range(0,ntypes):
+            if a == type_list[i]:
+                self.cpp_method.setGamma(i,gamma);
+
+    def set_gamma_r(self, a, gamma_r):
+        R""" Set gamma_r for a particle type.
+
+        Args:
+            a (str):  Particle type name
+            gamma_r (float or tuple): :math:`\gamma_r` for particle type a (in units of force/velocity), optionally for all body frame directions
+
+        :py:meth:`set_gamma_r()` sets the coefficient :math:`\gamma_r` for a single particle type, identified
+        by name. The default is 1.0 if not specified for a type. It must be positive or zero, if set
+        zero, it will have no rotational damping or random torque, but still with updates from normal net torque.
+
+        Examples::
+
+            bd.set_gamma_r('A', gamma_r=2.0)
+            bd.set_gamma_r('A', gamma_r=(1,2,3))
+
+        """
+
+        hoomd.util.print_status_line();
+        self.check_initialization();
+
+        if not isinstance(gamma_r,tuple):
+            gamma_r = (gamma_r, gamma_r, gamma_r)
+
+        if (gamma_r[0] < 0 or gamma_r[1] < 0 or gamma_r[2] < 0):
+            raise ValueError("The gamma_r must be positive or zero (represent no rotational damping or random torque, but with updates)")
+
+        ntypes = hoomd.context.current.system_definition.getParticleData().getNTypes();
+        type_list = [];
+        for i in range(0,ntypes):
+            type_list.append(hoomd.context.current.system_definition.getParticleData().getNameByType(i));
+
+        # change the parameters
+        for i in range(0,ntypes):
+            if a == type_list[i]:
+                self.cpp_method.setGamma_r(i,_hoomd.make_scalar3(*gamma_r));
+
 class mode_minimize_fire(_integrator):
     R""" Energy Minimizer (FIRE).
 

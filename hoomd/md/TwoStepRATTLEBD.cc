@@ -112,12 +112,13 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
         unsigned int ptag = h_tag.data[j];
 
         // Initialize the RNG
-        RandomGenerator rng(RNGIdentifier::TwoStepRATTLEBD, m_seed, ptag, timestep);
+        RandomGenerator rng(RNGIdentifier::TwoStepBD, m_seed, ptag, timestep);
 
         // compute the random force
         UniformDistribution<Scalar> uniform(Scalar(-1), Scalar(1));
-        Scalar ru = uniform(rng);
-        Scalar rv = uniform(rng);
+        Scalar rx = uniform(rng);
+        Scalar ry = uniform(rng);
+        Scalar rz = uniform(rng);
 
         Scalar gamma;
         if (m_use_lambda)
@@ -134,23 +135,9 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
         if (m_noiseless_t)
             coeff = Scalar(0.0);
 
-	//calculate tangent vectors
-	Scalar3 normal, tu, tv;
-        normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
-        if( normal.z*normal.z < 0.99 ) tu = make_scalar3(normal.y,-normal.x,0);
-	else tu = make_scalar3(0,-normal.z,normal.y); 
-        Scalar tang = ru*coeff/fast::sqrt(dot(tu,tu));
-        tu = tu*tang;
-        tv.x = normal.y*tu.z-normal.z*tu.y;
-        tv.y = normal.z*tu.x-normal.x*tu.z;
-        tv.z = normal.x*tu.y-normal.y*tu.x;
-        tang = rv*coeff/fast::sqrt(dot(tv,tv));
-        tv = tv*tang;
-
-
-        Scalar Fr_x = tu.x+tv.x;
-        Scalar Fr_y = tu.y+tv.y;
-        Scalar Fr_z = tu.z+tv.z;
+        Scalar Fr_x = rx*coeff;
+        Scalar Fr_y = ry*coeff;
+        Scalar Fr_z = rz*coeff;
 
         // update position
 	Scalar lambda = 0.0;
@@ -159,6 +146,8 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	next_pos.x = h_pos.data[j].x;
 	next_pos.y = h_pos.data[j].y;
 	next_pos.z = h_pos.data[j].z;
+
+	Scalar3 normal = m_manifold->derivative(next_pos);
 
 	Scalar inv_alpha = -m_deltaT/gamma;
 	inv_alpha = Scalar(1.0)/inv_alpha;
@@ -171,8 +160,8 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	{
 	    iteration++;
 	    residual.x = h_pos.data[j].x - next_pos.x + (h_net_force.data[j].x + Fr_x - lambda*normal.x) * m_deltaT / gamma;
-	    residual.y = h_pos.data[j].y - neyt_pos.y + (h_net_force.data[j].y + Fr_y - lambda*normal.y) * m_deltaT / gamma;
-	    residual.z = h_pos.data[j].z - nezt_pos.z + (h_net_force.data[j].z + Fr_z - lambda*normal.z) * m_deltaT / gamma;
+	    residual.y = h_pos.data[j].y - next_pos.y + (h_net_force.data[j].y + Fr_y - lambda*normal.y) * m_deltaT / gamma;
+	    residual.z = h_pos.data[j].z - next_pos.z + (h_net_force.data[j].z + Fr_z - lambda*normal.z) * m_deltaT / gamma;
 	    resid = m_manifold->implicit_function(next_pos);
 
             Scalar3 next_normal =  m_manifold->derivative(next_pos);
@@ -197,10 +186,20 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
         // draw a new random velocity for particle j
         Scalar mass =  h_vel.data[j].w;
         Scalar sigma = fast::sqrt(currentTemp/mass);
-        NormalDistribution<Scalar> normal(sigma);
-        h_vel.data[j].x = normal(rng);
-        h_vel.data[j].y = normal(rng);
-        h_vel.data[j].z = normal(rng);
+        NormalDistribution<Scalar> norm(sigma);
+        h_vel.data[j].x = norm(rng);
+        h_vel.data[j].y = norm(rng);
+        h_vel.data[j].z = norm(rng);
+
+	normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x, h_pos.data[j].y, h_pos.data[j].z));
+	Scalar normal_norm = Scalar(1.0)/fast::sqrt(dot(normal,normal));
+	normal *= normal_norm;
+	normal_norm = dot(make_scalar3(h_vel.data[j].x, h_vel.data[j].y, h_vel.data[j].z),normal);
+    
+        h_vel.data[j].x -= normal_norm*normal.x;
+        h_vel.data[j].y -= normal_norm*normal.y;
+        h_vel.data[j].z -= normal_norm*normal.z;
+	
 
         // rotational random force and orientation quaternion updates
         if (m_aniso)
