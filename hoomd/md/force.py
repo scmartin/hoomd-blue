@@ -417,7 +417,7 @@ class active(_force):
         ellipsoid = update.constraint_ellipsoid(group=groupA, P=(0,0,0), rx=3, ry=4, rz=5)
         force.active( seed=7, f_list=[tuple(1,2,3) for i in range(N)], orientation_link=False, rotation_diff=100, constraint=ellipsoid)
     """
-    def __init__(self, seed, group, f_lst=None, t_lst=None, orientation_link=True, orientation_reverse_link=False, rotation_diff=0, constraint=None):
+    def __init__(self, seed, group, f_lst=None, t_lst=None, orientation_link=True, orientation_reverse_link=False, rotation_diff=0):
         hoomd.util.print_status_line();
 
         # initialize the base class
@@ -445,41 +445,41 @@ class active(_force):
             for element in f_lst:
                 t_lst.append((0,0,0))
 
-        # assign constraints
-        if (constraint is not None):
-            if (constraint.__class__.__name__ == "constraint_ellipsoid"):
-                P = constraint.P
-                rx = constraint.rx
-                ry = constraint.ry
-                rz = constraint.rz
-            else:
-                raise RuntimeError("Active force constraint is not accepted (currently only accepts ellipsoids)")
-        else:
-            P = _hoomd.make_scalar3(0, 0, 0)
-            rx = 0
-            ry = 0
-            rz = 0
-
         # create the c++ mirror class
         if not hoomd.context.exec_conf.isCUDAEnabled():
             self.cpp_force = _md.ActiveForceCompute(hoomd.context.current.system_definition, group.cpp_group, seed, f_lst, t_lst,
-                                                      orientation_link, orientation_reverse_link, rotation_diff, P, rx, ry, rz);
-
+                                                      orientation_link, orientation_reverse_link, rotation_diff);
         else:
             self.cpp_force = _md.ActiveForceComputeGPU(hoomd.context.current.system_definition, group.cpp_group, seed, f_lst, t_lst,
-                                                         orientation_link, orientation_reverse_link, rotation_diff, P, rx, ry, rz);
+                                                         orientation_link, orientation_reverse_link, rotation_diff);
 
 
         # store metadata
-        self.metadata_fields = ['group', 'seed', 'orientation_link', 'rotation_diff', 'constraint']
+        self.metadata_fields = ['group', 'seed', 'orientation_link', 'rotation_diff']
         self.group = group
         self.seed = seed
         self.orientation_link = orientation_link
         self.orientation_reverse_link = orientation_reverse_link
         self.rotation_diff = rotation_diff
-        self.constraint = constraint
 
         hoomd.context.current.system.addCompute(self.cpp_force, self.force_name);
+
+    def add_manifold(self, manifold):
+        R""" Change the constant field and dipole moment.
+
+        Args:
+            field_x (float): x-component of the field (units?)
+            field_y (float): y-component of the field (units?)
+            field_z (float): z-component of the field (units?)
+            p (float): magnitude of the particles' dipole moment in the local z direction
+
+        Examples::
+
+            const_ext_f_dipole = force.external_field_dipole(field_x=0.0, field_y=1.0 ,field_z=0.5, p=1.0)
+            const_ext_f_dipole.setParams(field_x=0.1, field_y=0.1, field_z=0.0, p=1.0))
+
+        """
+        self.cpp_force.addManifold(manifold.cpp_manifold)
 
     # there are no coeffs to update in the active force compute
     def update_coeffs(self):

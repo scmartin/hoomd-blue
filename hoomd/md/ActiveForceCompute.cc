@@ -36,13 +36,9 @@ ActiveForceCompute::ActiveForceCompute(std::shared_ptr<SystemDefinition> sysdef,
                                         py::list t_lst,
                                         bool orientation_link,
                                         bool orientation_reverse_link,
-                                        Scalar rotation_diff,
-                                        Scalar3 P,
-                                        Scalar rx,
-                                        Scalar ry,
-                                        Scalar rz)
+                                        Scalar rotation_diff)
         : ForceCompute(sysdef), m_group(group), m_orientationLink(orientation_link), m_orientationReverseLink(orientation_reverse_link),
-            m_rotationDiff(rotation_diff), m_P(P), m_rx(rx), m_ry(ry), m_rz(rz)
+            m_rotationDiff(rotation_diff), m_constraint(false) 
     {
 
     unsigned int group_size = m_group->getNumMembersGlobal();
@@ -142,6 +138,16 @@ ActiveForceCompute::~ActiveForceCompute()
     {
     m_exec_conf->msg->notice(5) << "Destroying ActiveForceCompute" << endl;
     }
+
+/*! this function adds a mainfold constraint to the active particles
+*/
+
+
+void ActiveForceCompute::addManifold(std::shared_ptr<Manifold> manifold)
+	{
+	m_manifold = manifold;
+	m_constraint = true;
+	}
 
 /*! This function sets appropriate active forces on all active particles.
 */
@@ -252,7 +258,42 @@ void ActiveForceCompute::rotationalDiffusion(unsigned int timestep)
             }
         else // 3D: Following Stenhammar, Soft Matter, 2014
             {
-            if (m_rx == 0) // if no constraint
+            if (m_constraint) // if no constraint
+                {
+                Scalar3 current_pos = make_scalar3(h_pos.data[idx].x, h_pos.data[idx].y, h_pos.data[idx].z);
+                Scalar3 norm_scalar3 = m_manifold->derivative(current_pos); // the normal vector to which the particles are confined.
+		Scalar norm_normal = Scalar(1.0)/slow::sqrt( dot(norm_scalar3,norm_scalar3));
+		
+		norm_scalar3 *= norm_normal;
+
+                vec3<Scalar> norm;
+                norm = vec3<Scalar> (norm_scalar3);
+
+                vec3<Scalar> current_f_vec;
+                current_f_vec.x = h_f_actVec.data[i].x;
+                current_f_vec.y = h_f_actVec.data[i].y;
+                current_f_vec.z = h_f_actVec.data[i].z;
+
+                vec3<Scalar> current_t_vec;
+                current_t_vec.x = h_t_actVec.data[i].x;
+                current_t_vec.y = h_t_actVec.data[i].y;
+                current_t_vec.z = h_t_actVec.data[i].z;
+
+                vec3<Scalar> aux_vec = cross(current_f_vec, norm); // aux vec for defining direction that active force vector rotates towards. Torque ignored
+
+                Scalar delta_theta; // rotational diffusion angle
+                delta_theta = hoomd::NormalDistribution<Scalar>(m_rotationConst)(rng);
+
+                h_f_actVec.data[i].x = slow::cos(delta_theta)*current_f_vec.x + slow::sin(delta_theta)*aux_vec.x;
+                h_f_actVec.data[i].y = slow::cos(delta_theta)*current_f_vec.y + slow::sin(delta_theta)*aux_vec.y;
+                h_f_actVec.data[i].z = slow::cos(delta_theta)*current_f_vec.z + slow::sin(delta_theta)*aux_vec.z;
+
+                h_t_actVec.data[i].x = slow::cos(delta_theta)*current_t_vec.x + slow::sin(delta_theta)*aux_vec.x;
+                h_t_actVec.data[i].y = slow::cos(delta_theta)*current_t_vec.y + slow::sin(delta_theta)*aux_vec.y;
+                h_t_actVec.data[i].z = slow::cos(delta_theta)*current_t_vec.z + slow::sin(delta_theta)*aux_vec.z;
+
+                }
+            else // if constraint exists
                 {
                 hoomd::SpherePointGenerator<Scalar> unit_vec;
                 vec3<Scalar> rand_vec;
@@ -287,40 +328,6 @@ void ActiveForceCompute::rotationalDiffusion(unsigned int timestep)
                 h_t_actVec.data[i].z = slow::cos(delta_theta)*current_t_vec.z + slow::sin(delta_theta)*aux_vec.z;
 
                 }
-            else // if constraint exists
-                {
-                EvaluatorConstraintEllipsoid Ellipsoid(m_P, m_rx, m_ry, m_rz);
-
-                Scalar3 current_pos = make_scalar3(h_pos.data[idx].x, h_pos.data[idx].y, h_pos.data[idx].z);
-                Scalar3 norm_scalar3 = Ellipsoid.evalNormal(current_pos); // the normal vector to which the particles are confined.
-
-                vec3<Scalar> norm;
-                norm = vec3<Scalar> (norm_scalar3);
-
-                vec3<Scalar> current_f_vec;
-                current_f_vec.x = h_f_actVec.data[i].x;
-                current_f_vec.y = h_f_actVec.data[i].y;
-                current_f_vec.z = h_f_actVec.data[i].z;
-
-                vec3<Scalar> current_t_vec;
-                current_t_vec.x = h_t_actVec.data[i].x;
-                current_t_vec.y = h_t_actVec.data[i].y;
-                current_t_vec.z = h_t_actVec.data[i].z;
-
-                vec3<Scalar> aux_vec = cross(current_f_vec, norm); // aux vec for defining direction that active force vector rotates towards. Torque ignored
-
-                Scalar delta_theta; // rotational diffusion angle
-                delta_theta = hoomd::NormalDistribution<Scalar>(m_rotationConst)(rng);
-
-                h_f_actVec.data[i].x = slow::cos(delta_theta)*current_f_vec.x + slow::sin(delta_theta)*aux_vec.x;
-                h_f_actVec.data[i].y = slow::cos(delta_theta)*current_f_vec.y + slow::sin(delta_theta)*aux_vec.y;
-                h_f_actVec.data[i].z = slow::cos(delta_theta)*current_f_vec.z + slow::sin(delta_theta)*aux_vec.z;
-
-                h_t_actVec.data[i].x = slow::cos(delta_theta)*current_t_vec.x + slow::sin(delta_theta)*aux_vec.x;
-                h_t_actVec.data[i].y = slow::cos(delta_theta)*current_t_vec.y + slow::sin(delta_theta)*aux_vec.y;
-                h_t_actVec.data[i].z = slow::cos(delta_theta)*current_t_vec.z + slow::sin(delta_theta)*aux_vec.z;
-
-                }
             }
         }
     }
@@ -329,8 +336,6 @@ void ActiveForceCompute::rotationalDiffusion(unsigned int timestep)
 */
 void ActiveForceCompute::setConstraint()
     {
-    EvaluatorConstraintEllipsoid Ellipsoid(m_P, m_rx, m_ry, m_rz);
-
     //  array handles
     ArrayHandle<Scalar3> h_f_actVec(m_f_activeVec, access_location::host, access_mode::readwrite);
     ArrayHandle <Scalar4> h_pos(m_pdata -> getPositions(), access_location::host, access_mode::read);
@@ -344,7 +349,12 @@ void ActiveForceCompute::setConstraint()
 
         Scalar3 current_pos = make_scalar3(h_pos.data[idx].x, h_pos.data[idx].y, h_pos.data[idx].z);
 
-        Scalar3 norm_scalar3 = Ellipsoid.evalNormal(current_pos); // the normal vector to which the particles are confined.
+        Scalar3 norm_scalar3 = m_manifold->derivative(current_pos); // the normal vector to which the particles are confined.
+
+	Scalar norm_normal = Scalar(1.0)/slow::sqrt( dot(norm_scalar3,norm_scalar3));
+		
+	norm_scalar3 *= norm_normal;
+
         vec3<Scalar> norm;
         norm = vec3<Scalar>(norm_scalar3);
         Scalar dot_prod = h_f_actVec.data[i].x * norm.x + h_f_actVec.data[i].y * norm.y + h_f_actVec.data[i].z * norm.z;
@@ -376,7 +386,7 @@ void ActiveForceCompute::computeForces(unsigned int timestep)
 
         last_computed = timestep;
 
-        if (m_rx != 0)
+        if (m_constraint)
             {
             setConstraint(); // apply surface constraints to active particles active force vectors
             }
@@ -400,7 +410,7 @@ void ActiveForceCompute::computeForces(unsigned int timestep)
 void export_ActiveForceCompute(py::module& m)
     {
     py::class_< ActiveForceCompute, std::shared_ptr<ActiveForceCompute> >(m, "ActiveForceCompute", py::base<ForceCompute>())
-    .def(py::init< std::shared_ptr<SystemDefinition>, std::shared_ptr<ParticleGroup>, int, py::list, py::list,  bool, bool, Scalar,
-                    Scalar3, Scalar, Scalar, Scalar >())
+    .def(py::init< std::shared_ptr<SystemDefinition>, std::shared_ptr<ParticleGroup>, int, py::list, py::list,  bool, bool, Scalar>())
+    .def("addManifold", &ActiveForceCompute::addManifold)
     ;
     }

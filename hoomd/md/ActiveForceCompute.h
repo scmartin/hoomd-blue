@@ -10,7 +10,7 @@
 #include "hoomd/HOOMDMath.h"
 #include "hoomd/VectorMath.h"
 
-#include "EvaluatorConstraintEllipsoid.h"
+#include "Manifold.h"
 
 
 /*! \file ActiveForceCompute.h
@@ -37,14 +37,12 @@ class PYBIND11_EXPORT ActiveForceCompute : public ForceCompute
                              std::shared_ptr<ParticleGroup> group,
                              int seed, pybind11::list f_lst, pybind11::list t_lst,
                              bool orientation_link, bool orientation_reverse_link,
-                             Scalar rotation_diff,
-                             Scalar3 P,
-                             Scalar rx,
-                             Scalar ry,
-                             Scalar rz);
+                             Scalar rotation_diff);
 
         //! Destructor
         ~ActiveForceCompute();
+
+	void addManifold(std::shared_ptr<Manifold> manifold);
 
     protected:
         //! Actually compute the forces
@@ -64,10 +62,8 @@ class PYBIND11_EXPORT ActiveForceCompute : public ForceCompute
         bool m_orientationReverseLink;
         Scalar m_rotationDiff;
         Scalar m_rotationConst;
-        Scalar3 m_P;          //!< Position of the Ellipsoid
-        Scalar m_rx;          //!< Radius in X direction of the Ellipsoid
-        Scalar m_ry;          //!< Radius in Y direction of the Ellipsoid
-        Scalar m_rz;          //!< Radius in Z direction of the Ellipsoid
+        bool m_constraint;
+        std::shared_ptr<Manifold> m_manifold;  //!< The manifold used for the RATTLE constraint
         int m_seed;           //!< Random number seed
         GPUArray<Scalar3> m_f_activeVec; //! active force unit vectors for each particle
         GPUArray<Scalar> m_f_activeMag; //! active force magnitude for each particle

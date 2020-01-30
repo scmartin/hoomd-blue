@@ -156,6 +156,7 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	Scalar resid;
 	unsigned int iteration = 0;
 
+
 	do
 	{
 	    iteration++;
@@ -176,9 +177,18 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	 
 	} while (maxNorm(residual,resid) > m_eta && iteration < maxiteration );
 
-        h_pos.data[j].x += (h_net_force.data[j].x + Fr_x - lambda*normal.x) * m_deltaT / gamma;
-        h_pos.data[j].y += (h_net_force.data[j].y + Fr_y - lambda*normal.y) * m_deltaT / gamma;
-        h_pos.data[j].z += (h_net_force.data[j].z + Fr_z - lambda*normal.z) * m_deltaT / gamma;
+	Scalar dx = (h_net_force.data[j].x + Fr_x - lambda*normal.x) * m_deltaT / gamma;
+	Scalar dy = (h_net_force.data[j].y + Fr_y - lambda*normal.y) * m_deltaT / gamma;
+	Scalar dz = (h_net_force.data[j].z + Fr_z - lambda*normal.z) * m_deltaT / gamma;
+
+	Scalar trans = dx*dx + dy*dy + dz*dz;
+	if( trans > 0.1){
+	std::cerr << timestep << ": " << lambda << " " << fast::sqrt(trans) << std::endl;
+	}
+
+        h_pos.data[j].x += dx;
+        h_pos.data[j].y += dy;
+        h_pos.data[j].z += dz;
 
         // particles may have been moved slightly outside the box by the above steps, wrap them back into place
         box.wrap(h_pos.data[j], h_image.data[j]);
@@ -191,14 +201,14 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
         h_vel.data[j].y = norm(rng);
         h_vel.data[j].z = norm(rng);
 
-	normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x, h_pos.data[j].y, h_pos.data[j].z));
-	Scalar normal_norm = Scalar(1.0)/fast::sqrt(dot(normal,normal));
-	normal *= normal_norm;
-	normal_norm = dot(make_scalar3(h_vel.data[j].x, h_vel.data[j].y, h_vel.data[j].z),normal);
+	//normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x, h_pos.data[j].y, h_pos.data[j].z));
+	//Scalar normal_norm = Scalar(1.0)/fast::sqrt(dot(normal,normal));
+	//normal *= normal_norm;
+	//normal_norm = dot(make_scalar3(h_vel.data[j].x, h_vel.data[j].y, h_vel.data[j].z),normal);
     
-        h_vel.data[j].x -= normal_norm*normal.x;
-        h_vel.data[j].y -= normal_norm*normal.y;
-        h_vel.data[j].z -= normal_norm*normal.z;
+        //h_vel.data[j].x -= normal_norm*normal.x;
+        //h_vel.data[j].y -= normal_norm*normal.y;
+        //h_vel.data[j].z -= normal_norm*normal.z;
 	
 
         // rotational random force and orientation quaternion updates
