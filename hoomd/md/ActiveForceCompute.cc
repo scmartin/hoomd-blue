@@ -262,7 +262,7 @@ void ActiveForceCompute::rotationalDiffusion(unsigned int timestep)
                 {
                 Scalar3 current_pos = make_scalar3(h_pos.data[idx].x, h_pos.data[idx].y, h_pos.data[idx].z);
                 Scalar3 norm_scalar3 = m_manifold->derivative(current_pos); // the normal vector to which the particles are confined.
-		Scalar norm_normal = Scalar(1.0)/slow::sqrt( dot(norm_scalar3,norm_scalar3));
+		Scalar norm_normal = Scalar(1.0)/slow::sqrt(dot(norm_scalar3,norm_scalar3));
 		
 		norm_scalar3 *= norm_normal;
 
@@ -303,10 +303,10 @@ void ActiveForceCompute::rotationalDiffusion(unsigned int timestep)
                 aux_vec.x = h_f_actVec.data[i].y * rand_vec.z - h_f_actVec.data[i].z * rand_vec.y;
                 aux_vec.y = h_f_actVec.data[i].z * rand_vec.x - h_f_actVec.data[i].x * rand_vec.z;
                 aux_vec.z = h_f_actVec.data[i].x * rand_vec.y - h_f_actVec.data[i].y * rand_vec.x;
-                Scalar aux_vec_mag = slow::sqrt(aux_vec.x*aux_vec.x + aux_vec.y*aux_vec.y + aux_vec.z*aux_vec.z);
-                aux_vec.x /= aux_vec_mag;
-                aux_vec.y /= aux_vec_mag;
-                aux_vec.z /= aux_vec_mag;
+                Scalar aux_vec_mag = Scalar(1.0)/slow::sqrt(aux_vec.x*aux_vec.x + aux_vec.y*aux_vec.y + aux_vec.z*aux_vec.z);
+                aux_vec.x *= aux_vec_mag;
+                aux_vec.y *= aux_vec_mag;
+                aux_vec.z *= aux_vec_mag;
 
                 vec3<Scalar> current_f_vec;
                 current_f_vec.x = h_f_actVec.data[i].x;
@@ -349,27 +349,25 @@ void ActiveForceCompute::setConstraint()
 
         Scalar3 current_pos = make_scalar3(h_pos.data[idx].x, h_pos.data[idx].y, h_pos.data[idx].z);
 
-        Scalar3 norm_scalar3 = m_manifold->derivative(current_pos); // the normal vector to which the particles are confined.
+        Scalar3 norm = m_manifold->derivative(current_pos); // the normal vector to which the particles are confined.
 
-	Scalar norm_normal = Scalar(1.0)/slow::sqrt( dot(norm_scalar3,norm_scalar3));
+	Scalar norm_normal = Scalar(1.0)/slow::sqrt( dot(norm,norm));
 		
-	norm_scalar3 *= norm_normal;
+	norm *= norm_normal;
 
-        vec3<Scalar> norm;
-        norm = vec3<Scalar>(norm_scalar3);
         Scalar dot_prod = h_f_actVec.data[i].x * norm.x + h_f_actVec.data[i].y * norm.y + h_f_actVec.data[i].z * norm.z;
 
         h_f_actVec.data[i].x -= norm.x * dot_prod;
         h_f_actVec.data[i].y -= norm.y * dot_prod;
         h_f_actVec.data[i].z -= norm.z * dot_prod;
 
-        Scalar new_norm = slow::sqrt(h_f_actVec.data[i].x*h_f_actVec.data[i].x
+        Scalar new_norm = Scalar(1.0)/slow::sqrt(h_f_actVec.data[i].x*h_f_actVec.data[i].x
                                      + h_f_actVec.data[i].y*h_f_actVec.data[i].y
                                      + h_f_actVec.data[i].z*h_f_actVec.data[i].z);
 
-        h_f_actVec.data[i].x /= new_norm;
-        h_f_actVec.data[i].y /= new_norm;
-        h_f_actVec.data[i].z /= new_norm;
+        h_f_actVec.data[i].x *= new_norm;
+        h_f_actVec.data[i].y *= new_norm;
+        h_f_actVec.data[i].z *= new_norm;
         }
     }
 

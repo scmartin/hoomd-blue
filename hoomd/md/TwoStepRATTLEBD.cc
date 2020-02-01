@@ -182,9 +182,6 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	Scalar dz = (h_net_force.data[j].z + Fr_z - lambda*normal.z) * m_deltaT / gamma;
 
 	Scalar trans = dx*dx + dy*dy + dz*dz;
-	if( trans > 0.1){
-	std::cerr << timestep << ": " << lambda << " " << fast::sqrt(trans) << std::endl;
-	}
 
         h_pos.data[j].x += dx;
         h_pos.data[j].y += dy;

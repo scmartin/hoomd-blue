@@ -53,7 +53,7 @@ class integrate_brownian_script_tests (unittest.TestCase):
         bd.set_gamma('A', 0.5);
         bd.set_gamma('B', 1.0);
 
-        # test set_gamma
+        # test set_gamma_r
     def test_set_gamma_r(self):
         all = group.all();
         bd = md.integrate.brownian(all, kT=1.2, seed=1);
