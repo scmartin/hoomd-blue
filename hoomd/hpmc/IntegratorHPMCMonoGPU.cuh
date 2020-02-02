@@ -159,7 +159,7 @@ struct hpmc_implicit_args_t
                          const bool _quermass,
                          const Scalar _sweep_radius,
                          const unsigned int *_d_n_depletants,
-                         const unsigned int _max_n_depletants)
+                         const unsigned int _mean_n_depletants)
                 : depletant_type(_depletant_type),
                   d_implicit_count(_d_implicit_count),
                   implicit_counters_pitch(_implicit_counters_pitch),
@@ -168,7 +168,7 @@ struct hpmc_implicit_args_t
                   quermass(_quermass),
                   sweep_radius(_sweep_radius),
                   d_n_depletants(_d_n_depletants),
-                  max_n_depletants(_max_n_depletants)
+                  mean_n_depletants(_mean_n_depletants)
 
         { };
 
@@ -180,7 +180,7 @@ struct hpmc_implicit_args_t
     const bool quermass;                           //!< Enable quermass mode?
     const Scalar sweep_radius;                     //!< Sweep radius in quermass mode
     const unsigned int *d_n_depletants;            //!< Number of depletants per particle
-    const unsigned int max_n_depletants;           //!< Maximum number of depletants inserted per particle
+    const unsigned int mean_n_depletants;           //!< Maximum number of depletants inserted per particle
     };
 
 //! Wraps arguments for hpmc_update_pdata
@@ -284,7 +284,7 @@ void generate_num_depletants(const unsigned int seed,
                              const unsigned int block_size,
                              const GPUPartition& gpu_partition);
 
-unsigned int get_max_num_depletants(const unsigned int N,
+unsigned int get_total_num_depletants(const unsigned int N,
                             unsigned int *d_n_depletants,
                             CachedAllocator& alloc);
 
@@ -1658,7 +1658,7 @@ void hpmc_insert_depletants(const hpmc_args_t& args, const hpmc_implicit_args_t&
         if (range.first == range.second)
             continue;
 
-        unsigned int blocks_per_particle = implicit_args.max_n_depletants/n_groups + 1;
+        unsigned int blocks_per_particle = implicit_args.mean_n_depletants/n_groups + 1;
         dim3 grid( range.second-range.first, blocks_per_particle, 1);
 
         hipLaunchKernelGGL((kernel::hpmc_insert_depletants<Shape, false>), grid, threads, shared_bytes, 0, args.d_trial_postype,

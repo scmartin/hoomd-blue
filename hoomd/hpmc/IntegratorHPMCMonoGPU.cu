@@ -366,7 +366,7 @@ void generate_num_depletants(const unsigned int seed,
         }
     }
 
-unsigned int get_max_num_depletants(const unsigned int N,
+unsigned int get_total_num_depletants(const unsigned int N,
                             unsigned int *d_n_depletants,
                             CachedAllocator& alloc)
     {
@@ -377,9 +377,7 @@ unsigned int get_max_num_depletants(const unsigned int N,
     return thrust::reduce(thrust::cuda::par(alloc),
     #endif
         n_depletants,
-        n_depletants + N,
-        0,
-        thrust::maximum<unsigned int>());
+        n_depletants + N);
     }
 
 } // end namespace gpu

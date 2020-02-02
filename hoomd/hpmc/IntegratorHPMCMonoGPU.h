@@ -835,10 +835,11 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                         this->m_exec_conf->endMultiGPU();
 
                         // max reduce over result
-                        unsigned int max_n_depletants = gpu::get_max_num_depletants(
+                        unsigned int mean_n_depletants = gpu::get_total_num_depletants(
                             this->m_pdata->getN(),
                             d_n_depletants.data,
                             this->m_exec_conf->getCachedAllocator());
+                        mean_n_depletants /= this->m_pdata->getN();
                         if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
                             CHECK_CUDA_ERROR();
 
@@ -858,7 +859,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                             this->m_quermass,
                             this->m_sweep_radius,
                             d_n_depletants.data,
-                            max_n_depletants);
+                            mean_n_depletants);
                         gpu::hpmc_insert_depletants<Shape>(args, implicit_args, params.data());
                         if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
                             CHECK_CUDA_ERROR();
