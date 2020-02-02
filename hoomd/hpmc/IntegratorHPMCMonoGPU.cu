@@ -1,5 +1,15 @@
 #include "IntegratorHPMCMonoGPU.cuh"
 
+#include "hoomd/GPUPartition.cuh"
+#include "hoomd/RandomNumbers.h"
+#include "hoomd/RNGIdentifiers.h"
+#include "hoomd/CachedAllocator.h"
+
+#include <thrust/device_ptr.h>
+#include <thrust/reduce.h>
+#include <thrust/execution_policy.h>
+
+
 namespace hpmc
 {
 namespace gpu
@@ -169,6 +179,32 @@ __global__ void hpmc_accept(const unsigned int *d_ptl_by_update_order,
         d_reject_out[i] = accept ? 0 : 1;
         }  // end if move_active
     }
+
+//! Generate number of depletants per particle
+__global__ void generate_num_depletants(const unsigned int seed,
+                                        const unsigned int timestep,
+                                        const unsigned int select,
+                                        const unsigned int num_types,
+                                        const unsigned int depletant_type,
+                                        const unsigned int work_offset,
+                                        const unsigned int nwork,
+                                        const Scalar *d_lambda,
+                                        const Scalar4 *d_postype,
+                                        unsigned int *d_n_depletants)
+    {
+    unsigned int idx = threadIdx.x + blockDim.x*blockIdx.x;
+
+    if (idx >= nwork)
+        return;
+
+    idx += work_offset;
+
+    hoomd::RandomGenerator rng_poisson(hoomd::RNGIdentifier::HPMCDepletantNum, idx, seed, timestep, select*num_types + depletant_type);
+    Index2D typpair_idx(num_types);
+    unsigned int type_i = __scalar_as_int(d_postype[idx].w);
+    d_n_depletants[idx] = hoomd::PoissonDistribution<Scalar>(d_lambda[typpair_idx(depletant_type,type_i)])(rng_poisson);
+    }
+
 } // end namespace kernel
 
 //! Driver for kernel::hpmc_excell()
@@ -287,6 +323,63 @@ void hpmc_accept(const unsigned int *d_ptl_by_update_order,
 
     // update reject flags
     hipMemcpyAsync(d_reject, d_reject_out, sizeof(unsigned int)*N, hipMemcpyDeviceToDevice);
+    }
+
+void generate_num_depletants(const unsigned int seed,
+                             const unsigned int timestep,
+                             const unsigned int select,
+                             const unsigned int num_types,
+                             const unsigned int depletant_type,
+                             const Scalar *d_lambda,
+                             const Scalar4 *d_postype,
+                             unsigned int *d_n_depletants,
+                             const unsigned int block_size,
+                             const GPUPartition& gpu_partition)
+    {
+    // determine the maximum block size and clamp the input block size down
+    static unsigned int max_block_size = UINT_MAX;
+    if (max_block_size == UINT_MAX)
+        {
+        hipFuncAttributes attr;
+        hipFuncGetAttributes(&attr, reinterpret_cast<const void*>(kernel::generate_num_depletants));
+        max_block_size = attr.maxThreadsPerBlock;
+        }
+
+    unsigned int run_block_size = min(block_size, max_block_size);
+
+    for (int idev = gpu_partition.getNumActiveGPUs() - 1; idev >= 0; --idev)
+        {
+        auto range = gpu_partition.getRangeAndSetGPU(idev);
+        unsigned int nwork = range.second - range.first;
+
+        hipLaunchKernelGGL(kernel::generate_num_depletants, nwork/run_block_size+1, run_block_size, 0, 0,
+            seed,
+            timestep,
+            select,
+            num_types,
+            depletant_type,
+            range.first,
+            nwork,
+            d_lambda,
+            d_postype,
+            d_n_depletants);
+        }
+    }
+
+unsigned int get_max_num_depletants(const unsigned int N,
+                            unsigned int *d_n_depletants,
+                            CachedAllocator& alloc)
+    {
+    thrust::device_ptr<unsigned int> n_depletants(d_n_depletants);
+    #ifdef __HIP_PLATFORM_HCC__
+    return thrust::reduce(thrust::hip::par(alloc),
+    #else
+    return thrust::reduce(thrust::cuda::par(alloc),
+    #endif
+        n_depletants,
+        n_depletants + N,
+        0,
+        thrust::maximum<unsigned int>());
     }
 
 } // end namespace gpu
