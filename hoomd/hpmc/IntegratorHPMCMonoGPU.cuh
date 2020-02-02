@@ -946,11 +946,11 @@ __global__ void hpmc_insert_depletants(const Scalar4 *d_trial_postype,
     __syncthreads();
 
     unsigned int blocks_per_particle = gridDim.y;
-    unsigned int i_dep = group_size*group+offset + blockIdx.y*group_size*n_groups;
+    unsigned int i_dep = group + blockIdx.y*n_groups;
 
     while (s_adding_depletants)
         {
-        while (s_depletant_queue_size < max_depletant_queue_size && i_dep < n_depletants)
+        while (offset == 0 && s_depletant_queue_size < max_depletant_queue_size && i_dep < n_depletants)
             {
             // one RNG per depletant
             hoomd::RandomGenerator rng(hoomd::RNGIdentifier::HPMCDepletants, seed+i, i_dep, select*num_types + depletant_type, timestep);
@@ -1000,7 +1000,7 @@ __global__ void hpmc_insert_depletants(const Scalar4 *d_trial_postype,
                 } // end if add_to_queue
 
             // advance depletant idx
-            i_dep += group_size*n_groups*blocks_per_particle;
+            i_dep += n_groups*blocks_per_particle;
             } // end while (s_depletant_queue_size < max_depletant_queue_size && i_dep < n_depletants)
 
         __syncthreads();
@@ -1225,7 +1225,7 @@ __global__ void hpmc_insert_depletants(const Scalar4 *d_trial_postype,
         __syncthreads();
         if (master && group == 0)
             s_depletant_queue_size = 0;
-        if (i_dep < n_depletants)
+        if (offset == 0 && i_dep < n_depletants)
             atomicAdd(&s_adding_depletants, 1);
         __syncthreads();
         } // end loop over depletants
