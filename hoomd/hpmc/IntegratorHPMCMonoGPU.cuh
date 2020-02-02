@@ -1263,12 +1263,15 @@ __global__ void hpmc_insert_depletants(const Scalar4 *d_trial_postype,
         atomicAdd(&d_counters->overlap_checks, s_overlap_checks);
         #endif
 
-        // increment number of inserted depletants
-        #if (__CUDA_ARCH__ >= 600)
-        atomicAdd_system(&d_implicit_counters[depletant_type].insert_count, n_depletants);
-        #else
-        atomicAdd(&d_implicit_counters[depletant_type].insert_count, n_depletants);
-        #endif
+        if (blockIdx.y == 0)
+            {
+            // increment number of inserted depletants
+            #if (__CUDA_ARCH__ >= 600)
+            atomicAdd_system(&d_implicit_counters[depletant_type].insert_count, n_depletants);
+            #else
+            atomicAdd(&d_implicit_counters[depletant_type].insert_count, n_depletants);
+            #endif
+            }
         }
     }
 
