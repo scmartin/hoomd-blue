@@ -895,7 +895,7 @@ __global__ void hpmc_insert_depletants(const Scalar4 *d_trial_postype,
     __syncthreads();
 
     // identify the active cell that this thread handles
-    unsigned int i = blockIdx.x + work_offset;
+    unsigned int i = blockIdx.y + work_offset;
 
     // load updated particle position
     if (master && group == 0)
@@ -945,12 +945,12 @@ __global__ void hpmc_insert_depletants(const Scalar4 *d_trial_postype,
 
     __syncthreads();
 
-    unsigned int blocks_per_particle = gridDim.y;
-    unsigned int i_dep = group + blockIdx.y*n_groups;
+    unsigned int blocks_per_particle = gridDim.x;
+    unsigned int i_dep = group + blockIdx.x*n_groups;
 
     while (s_adding_depletants)
         {
-        while (offset == 0 && s_depletant_queue_size < max_depletant_queue_size && i_dep < n_depletants)
+        while (master && s_depletant_queue_size < max_depletant_queue_size && i_dep < n_depletants)
             {
             // one RNG per depletant
             hoomd::RandomGenerator rng(hoomd::RNGIdentifier::HPMCDepletants, seed+i, i_dep, select*num_types + depletant_type, timestep);
@@ -1225,7 +1225,7 @@ __global__ void hpmc_insert_depletants(const Scalar4 *d_trial_postype,
         __syncthreads();
         if (master && group == 0)
             s_depletant_queue_size = 0;
-        if (offset == 0 && i_dep < n_depletants)
+        if (master && i_dep < n_depletants)
             atomicAdd(&s_adding_depletants, 1);
         __syncthreads();
         } // end loop over depletants
@@ -1263,7 +1263,7 @@ __global__ void hpmc_insert_depletants(const Scalar4 *d_trial_postype,
         atomicAdd(&d_counters->overlap_checks, s_overlap_checks);
         #endif
 
-        if (blockIdx.y == 0)
+        if (blockIdx.x == 0)
             {
             // increment number of inserted depletants
             #if (__CUDA_ARCH__ >= 600)
@@ -1662,7 +1662,7 @@ void hpmc_insert_depletants(const hpmc_args_t& args, const hpmc_implicit_args_t&
             continue;
 
         unsigned int blocks_per_particle = implicit_args.mean_n_depletants/n_groups + 1;
-        dim3 grid( range.second-range.first, blocks_per_particle, 1);
+        dim3 grid(blocks_per_particle, range.second-range.first, 1);
 
         hipLaunchKernelGGL((kernel::hpmc_insert_depletants<Shape, false>), grid, threads, shared_bytes, 0, args.d_trial_postype,
                                                                      args.d_trial_orientation,
