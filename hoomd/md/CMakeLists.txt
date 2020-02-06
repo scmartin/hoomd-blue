@@ -26,6 +26,7 @@ set(_md_sources module-md.cc
                    NeighborListTree.cc
                    OPLSDihedralForceCompute.cc
                    PPPMForceCompute.cc
+                   EllipsoidManifold.cc
                    SphereManifold.cc
                    TPMSManifold.cc
                    TableAngleForceCompute.cc
@@ -145,6 +146,7 @@ set(_md_headers ActiveForceComputeGPU.h
                 PPPMForceComputeGPU.h
                 PPPMForceCompute.h
                 QuaternionMath.h
+                EllipsoidManifold.h
                 SphereManifold.h
                 TPMSManifold.h
                 TableAngleForceComputeGPU.h

@@ -23,6 +23,7 @@ class constrain_distance_tests (unittest.TestCase):
     # test to see that se can create a md.force.constant
     def test_create(self):
         md.constrain.sphere_manifold(P=(0,0,0),r=5);
+        md.constrain.ellipsoid_manifold(a=5,b=3,c=2,P=(0,0,0));
         md.constrain.tpms_manifold(surface='G',N=1);
         md.constrain.tpms_manifold(surface='diamond',N=2);
         md.constrain.tpms_manifold(surface='Primitive',N=3);

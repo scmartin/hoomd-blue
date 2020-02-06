@@ -181,8 +181,6 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	Scalar dy = (h_net_force.data[j].y + Fr_y - lambda*normal.y) * m_deltaT / gamma;
 	Scalar dz = (h_net_force.data[j].z + Fr_z - lambda*normal.z) * m_deltaT / gamma;
 
-	Scalar trans = dx*dx + dy*dy + dz*dz;
-
         h_pos.data[j].x += dx;
         h_pos.data[j].y += dy;
         h_pos.data[j].z += dz;

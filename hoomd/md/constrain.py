@@ -558,6 +558,14 @@ class _manifold():
             position (np.array): The position to evaluate at."""
         return self.cpp_manifold.derivative(_hoomd.make_scalar3(position[0], position[1], position[2]))
 
+class ellipsoid_manifold(_manifold):
+    def __init__(self,a,b,c, P):
+        hoomd.util.print_status_line();
+        # initialize the base class
+        _manifold.__init__(self);
+        P = _hoomd.make_scalar3(P[0], P[1], P[2]);
+        self.cpp_manifold = _md.EllipsoidManifold(hoomd.context.current.system_definition, a, b, c, P );
+
 class sphere_manifold(_manifold):
     def __init__(self,r, P):
         hoomd.util.print_status_line();
