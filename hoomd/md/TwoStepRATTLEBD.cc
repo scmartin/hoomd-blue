@@ -16,7 +16,9 @@ using namespace hoomd;
 inline Scalar maxNorm(Scalar3 vec, Scalar resid)
     {
     Scalar vec_norm = sqrt(dot(vec,vec));
-    return std::max(vec_norm, abs(resid) );
+    Scalar abs_resid = fabs(resid);
+    if ( vec_norm > abs_resid) return vec_norm;
+    else return abs_resid;
     }
 
 #ifdef ENABLE_MPI

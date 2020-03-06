@@ -6,7 +6,7 @@
 
 #include "Manifold.h"
 
-/*! \file SphereManifold.h
+/*! \file FlatManifold.h
     \brief Declares the implicit function of a sphere.
 */
 
@@ -16,23 +16,23 @@
 
 #include <hoomd/extern/pybind/include/pybind11/pybind11.h>
 
-#ifndef __SPHERE_MANIFOLD_H__
-#define __SPHERE_MANIFOLD_H__
+#ifndef __FLAT_MANIFOLD_H__
+#define __FLAT_MANIFOLD_H__
 
 //! Defines the geometry of a manifold.
-class PYBIND11_EXPORT SphereManifold : public Manifold
+class PYBIND11_EXPORT FlatManifold : public Manifold
     {
     public:
         //! Constructs the compute
-        /*! \param radius The r of the sphere.
-            \param P The location of the sphere.
+        /*! \param surf Defines the specific plane
+            \param shift Shift of the plane in normal direction.
         */
-        SphereManifold(std::shared_ptr<SystemDefinition> sysdef,
-                  Scalar r, 
-                  Scalar3 P);
+        FlatManifold(std::shared_ptr<SystemDefinition> sysdef,
+                  std::string surf, 
+                  Scalar shift);
 
         //! Destructor
-        virtual ~SphereManifold();
+        virtual ~FlatManifold();
 
         //! Return the value of the implicit surface function of the sphere.
         /*! \param point The position to evaluate the function.
@@ -45,15 +45,17 @@ class PYBIND11_EXPORT SphereManifold : public Manifold
         Scalar3 derivative(Scalar3 point);
 
     protected:
-        Scalar m_r; //! The radius of the sphere.
-        Scalar3 m_P; //! The center of the sphere.
+        std::string m_surf; //! determines which plane is considered
+        Scalar m_shift; //! shift in normal direction
 
     private:
         //! Validate that the sphere is in the box and all particles are very near the constraint
-        void validate();
+	bool xy=false;
+	bool xz=false;
+	bool yz=false;
     };
 
-//! Exports the SphereManifold class to python
-void export_SphereManifold(pybind11::module& m);
+//! Exports the FlatManifold class to python
+void export_FlatManifold(pybind11::module& m);
 
 #endif
