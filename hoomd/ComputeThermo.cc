@@ -6,6 +6,7 @@
 
 /*! \file ComputeThermo.cc
     \brief Contains code for the ComputeThermo class
+
 */
 
 #include "ComputeThermo.h"

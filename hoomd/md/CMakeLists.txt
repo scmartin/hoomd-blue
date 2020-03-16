@@ -174,6 +174,7 @@ set(_md_headers ActiveForceComputeGPU.h
                 TwoStepRATTLEBD.h
                 TwoStepRATTLELangevin.h
                 TwoStepRATTLENVE.h
+                TwoStepRATTLENVEGPU.h
                 WallData.h
                 ZeroMomentumUpdater.h
                 )
@@ -207,6 +208,7 @@ list(APPEND _md_sources ActiveForceComputeGPU.cc
                            TwoStepLangevinGPU.cc
                            TwoStepNPTMTKGPU.cc
                            TwoStepNVEGPU.cc
+                           TwoStepRATTLENVEGPU.cc
                            TwoStepNVTMTKGPU.cc
                            MuellerPlatheFlowGPU.cc
                            CosineSqAngleForceComputeGPU.cc
@@ -263,6 +265,7 @@ set(_md_cu_sources ActiveForceComputeGPU.cu
                       TwoStepLangevinGPU.cu
                       TwoStepNPTMTKGPU.cu
                       TwoStepNVEGPU.cu
+                      TwoStepRATTLENVEGPU.cu
                       TwoStepNVTMTKGPU.cu
                       MuellerPlatheFlowGPU.cu
                       CosineSqAngleForceGPU.cu

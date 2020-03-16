@@ -919,8 +919,8 @@ class nve_rattle(_integration_method):
         if not hoomd.context.exec_conf.isCUDAEnabled():
             self.cpp_method = _md.TwoStepRATTLENVE(hoomd.context.current.system_definition, group.cpp_group, manifold.cpp_manifold, False, eta);
         else:
-            raise RuntimeError("Not supported on GPU yet");
-            #self.cpp_method = _md.TwoStepRATTLENVEGPU(hoomd.context.current.system_definition, group.cpp_group,manifold.cpp_manifold, eta);
+            #raise RuntimeError("Not supported on GPU yet");
+            self.cpp_method = _md.TwoStepRATTLENVEGPU(hoomd.context.current.system_definition, group.cpp_group,manifold.cpp_manifold, eta);
 
         # set the limit
         if limit is not None:

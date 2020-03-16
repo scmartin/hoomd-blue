@@ -100,6 +100,7 @@
 #include "TwoStepLangevinGPU.h"
 #include "TwoStepNPTMTKGPU.h"
 #include "TwoStepNVEGPU.h"
+#include "TwoStepRATTLENVEGPU.h"
 #include "TwoStepNVTMTKGPU.h"
 #include "MuellerPlatheFlowGPU.h"
 #endif
@@ -398,6 +399,7 @@ PYBIND11_MODULE(_md, m)
 
 #ifdef ENABLE_CUDA
     export_TwoStepNVEGPU(m);
+    export_TwoStepRATTLENVEGPU(m);
     export_TwoStepNVTMTKGPU(m);
     export_TwoStepLangevinGPU(m);
     export_TwoStepBDGPU(m);

@@ -126,12 +126,14 @@ ActiveForceCompute::ActiveForceCompute(std::shared_ptr<SystemDefinition> sysdef,
 
     // Hash the User's Seed to make it less likely to be a low positive integer
     m_seed = seed*0x12345677 + 0x12345; seed^=(seed>>16); seed*= 0x45679;
+    
 
     // broadcast the seed from rank 0 to all other ranks.
     #ifdef ENABLE_MPI
         if(this->m_pdata->getDomainDecomposition())
             bcast(m_seed, 0, this->m_exec_conf->getMPICommunicator());
     #endif
+
     }
 
 ActiveForceCompute::~ActiveForceCompute()
@@ -258,7 +260,7 @@ void ActiveForceCompute::rotationalDiffusion(unsigned int timestep)
             }
         else // 3D: Following Stenhammar, Soft Matter, 2014
             {
-            if (m_constraint) // if no constraint
+            if (m_constraint) // if constraint exists
                 {
                 Scalar3 current_pos = make_scalar3(h_pos.data[idx].x, h_pos.data[idx].y, h_pos.data[idx].z);
                 Scalar3 norm_scalar3 = m_manifold->derivative(current_pos); // the normal vector to which the particles are confined.
@@ -281,8 +283,8 @@ void ActiveForceCompute::rotationalDiffusion(unsigned int timestep)
 
                 vec3<Scalar> aux_vec = cross(current_f_vec, norm); // aux vec for defining direction that active force vector rotates towards. Torque ignored
 
-                Scalar delta_theta; // rotational diffusion angle
-                delta_theta = hoomd::NormalDistribution<Scalar>(m_rotationConst)(rng);
+                // rotational diffusion angle
+                Scalar delta_theta = hoomd::NormalDistribution<Scalar>(m_rotationConst)(rng);
 
                 h_f_actVec.data[i].x = slow::cos(delta_theta)*current_f_vec.x + slow::sin(delta_theta)*aux_vec.x;
                 h_f_actVec.data[i].y = slow::cos(delta_theta)*current_f_vec.y + slow::sin(delta_theta)*aux_vec.y;
@@ -402,6 +404,7 @@ void ActiveForceCompute::computeForces(unsigned int timestep)
 
     if (m_prof)
         m_prof->pop(m_exec_conf);
+
     }
 
 

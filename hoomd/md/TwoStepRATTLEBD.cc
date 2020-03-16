@@ -130,10 +130,11 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
             unsigned int type = __scalar_as_int(h_pos.data[j].w);
             gamma = h_gamma.data[type];
             }
+        Scalar deltaT_gamma = m_deltaT/gamma;
 
         // compute the bd force (the extra factor of 3 is because <rx^2> is 1/3 in the uniform -1,1 distribution
         // it is not the dimensionality of the system
-        Scalar coeff = fast::sqrt(Scalar(6.0)*gamma*currentTemp/m_deltaT);
+        Scalar coeff = fast::sqrt(Scalar(6.0)*currentTemp/deltaT_gamma);
         if (m_noiseless_t)
             coeff = Scalar(0.0);
 
@@ -151,7 +152,7 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 
 	Scalar3 normal = m_manifold->derivative(next_pos);
 
-	Scalar inv_alpha = -m_deltaT/gamma;
+	Scalar inv_alpha = -deltaT_gamma;
 	inv_alpha = Scalar(1.0)/inv_alpha;
 
 	Scalar3 residual;
@@ -162,9 +163,9 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	do
 	{
 	    iteration++;
-	    residual.x = h_pos.data[j].x - next_pos.x + (h_net_force.data[j].x + Fr_x - lambda*normal.x) * m_deltaT / gamma;
-	    residual.y = h_pos.data[j].y - next_pos.y + (h_net_force.data[j].y + Fr_y - lambda*normal.y) * m_deltaT / gamma;
-	    residual.z = h_pos.data[j].z - next_pos.z + (h_net_force.data[j].z + Fr_z - lambda*normal.z) * m_deltaT / gamma;
+	    residual.x = h_pos.data[j].x - next_pos.x + (h_net_force.data[j].x + Fr_x - lambda*normal.x) * deltaT_gamma;
+	    residual.y = h_pos.data[j].y - next_pos.y + (h_net_force.data[j].y + Fr_y - lambda*normal.y) * deltaT_gamma;
+	    residual.z = h_pos.data[j].z - next_pos.z + (h_net_force.data[j].z + Fr_z - lambda*normal.z) * deltaT_gamma;
 	    resid = m_manifold->implicit_function(next_pos);
 
             Scalar3 next_normal =  m_manifold->derivative(next_pos);
@@ -179,9 +180,9 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	 
 	} while (maxNorm(residual,resid) > m_eta && iteration < maxiteration );
 
-	Scalar dx = (h_net_force.data[j].x + Fr_x - lambda*normal.x) * m_deltaT / gamma;
-	Scalar dy = (h_net_force.data[j].y + Fr_y - lambda*normal.y) * m_deltaT / gamma;
-	Scalar dz = (h_net_force.data[j].z + Fr_z - lambda*normal.z) * m_deltaT / gamma;
+	Scalar dx = (h_net_force.data[j].x + Fr_x - lambda*normal.x) * deltaT_gamma;
+	Scalar dy = (h_net_force.data[j].y + Fr_y - lambda*normal.y) * deltaT_gamma;
+	Scalar dz = (h_net_force.data[j].z + Fr_z - lambda*normal.z) * deltaT_gamma;
 
         h_pos.data[j].x += dx;
         h_pos.data[j].y += dy;
@@ -240,7 +241,7 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
                 if (y_zero) bf_torque.y = 0;
                 if (z_zero) bf_torque.z = 0;
 
-                // use the damping by gamma_r and rotate back to lab frame
+                // use the d_invamping by gamma_r and rotate back to lab frame
                 // Notes For the Future: take special care when have anisotropic gamma_r
                 // if aniso gamma_r, first rotate the torque into particle frame and divide the different gamma_r
                 // and then rotate the "angular velocity" back to lab frame and integrate
