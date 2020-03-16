@@ -21,9 +21,8 @@ using namespace std;
 */
 TwoStepRATTLENVEGPU::TwoStepRATTLENVEGPU(std::shared_ptr<SystemDefinition> sysdef,
                        std::shared_ptr<ParticleGroup> group,
-                       std::shared_ptr<Manifold> manifold,
-                       Scalar eta)
-    : TwoStepRATTLENVE(sysdef, group, manifold, eta)
+                       std::shared_ptr<Manifold> manifold)
+    : TwoStepRATTLENVE(sysdef, group, manifold)
     {
     // only one GPU is supported
     if (!m_exec_conf->isCUDAEnabled())
@@ -130,6 +129,7 @@ void TwoStepRATTLENVEGPU::integrateStepTwo(unsigned int timestep)
     if (m_prof)
         m_prof->push(m_exec_conf, "NVE step 2");
 
+    ArrayHandle<Scalar4> d_pos(m_pdata->getPositions(), access_location::device, access_mode::read);
     ArrayHandle<Scalar4> d_vel(m_pdata->getVelocities(), access_location::device, access_mode::readwrite);
     ArrayHandle<Scalar3> d_accel(m_pdata->getAccelerations(), access_location::device, access_mode::readwrite);
 

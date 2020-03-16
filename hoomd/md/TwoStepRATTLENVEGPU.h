@@ -30,7 +30,7 @@ class PYBIND11_EXPORT TwoStepRATTLENVEGPU : public TwoStepRATTLENVE
     {
     public:
         //! Constructs the integration method and associates it with the system
-        TwoStepRATTLENVEGPU(std::shared_ptr<SystemDefinition> sysdef, std::shared_ptr<ParticleGroup> group,std::shared_ptr<Manifold> manifold, Scalar eta = 0.000001);
+        TwoStepRATTLENVEGPU(std::shared_ptr<SystemDefinition> sysdef, std::shared_ptr<ParticleGroup> group,std::shared_ptr<Manifold> manifold);
         virtual ~TwoStepRATTLENVEGPU() {};
 
         //! Performs the first step of the integration
