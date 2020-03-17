@@ -1331,7 +1331,7 @@ class langevin_rattle(_integration_method):
 				   eta,
                                    suffix);
         else:
-            raise RuntimeError("Not supported on GPU yet");
+            #raise RuntimeError("Not supported on GPU yet");
             L = 0
             if (manifold is not None):
                 if (manifold.__class__.__name__ is "tpms_manifold"):

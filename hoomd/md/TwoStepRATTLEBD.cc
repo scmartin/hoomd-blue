@@ -116,12 +116,6 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
         // Initialize the RNG
         RandomGenerator rng(RNGIdentifier::TwoStepBD, m_seed, ptag, timestep);
 
-        // compute the random force
-        UniformDistribution<Scalar> uniform(Scalar(-1), Scalar(1));
-        Scalar rx = uniform(rng);
-        Scalar ry = uniform(rng);
-        Scalar rz = uniform(rng);
-
         Scalar gamma;
         if (m_use_lambda)
             gamma = m_lambda*h_diameter.data[j];
@@ -132,11 +126,42 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
             }
         Scalar deltaT_gamma = m_deltaT/gamma;
 
-        // compute the bd force (the extra factor of 3 is because <rx^2> is 1/3 in the uniform -1,1 distribution
-        // it is not the dimensionality of the system
-        Scalar coeff = fast::sqrt(Scalar(6.0)*currentTemp/deltaT_gamma);
-        if (m_noiseless_t)
-            coeff = Scalar(0.0);
+        Scalar rx, ry, rz, coeff;
+
+	Scalar3 normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
+
+        if(currentTemp > 0)
+	{
+		// compute the random force
+		UniformDistribution<Scalar> uniform(Scalar(-1), Scalar(1));
+		rx = uniform(rng);
+		ry = uniform(rng);
+		rz = uniform(rng);
+
+
+		// compute the bd force (the extra factor of 3 is because <rx^2> is 1/3 in the uniform -1,1 distribution
+		// it is not the dimensionality of the system
+		coeff = fast::sqrt(Scalar(6.0)*currentTemp/deltaT_gamma);
+		if (m_noiseless_t)
+		    coeff = Scalar(0.0);
+
+		Scalar ndotn = Scalar(1.0)/fast::sqrt(dot(normal,normal));
+		Scalar proj_x = normal.x*ndotn;
+		Scalar proj_y = normal.y*ndotn;
+		Scalar proj_z = normal.z*ndotn;
+		
+		Scalar proj_r = rx*proj_x + ry*proj_y + rz*proj_z;
+		rx = rx - proj_r*proj_x;
+		ry = ry - proj_r*proj_y;
+		rz = rz - proj_r*proj_z;
+	}
+	else
+	{
+           	rx = 0;
+           	ry = 0;
+           	rz = 0;
+           	coeff = 0;
+	}
 
         Scalar Fr_x = rx*coeff;
         Scalar Fr_y = ry*coeff;
@@ -149,8 +174,6 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	next_pos.x = h_pos.data[j].x;
 	next_pos.y = h_pos.data[j].y;
 	next_pos.z = h_pos.data[j].z;
-
-	Scalar3 normal = m_manifold->derivative(next_pos);
 
 	Scalar inv_alpha = -deltaT_gamma;
 	inv_alpha = Scalar(1.0)/inv_alpha;

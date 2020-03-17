@@ -342,25 +342,51 @@ void TwoStepRATTLELangevin::integrateStepTwo(unsigned int timestep)
 
         // first, calculate the BD forces on manifold
         // Generate two random numbers
-        hoomd::UniformDistribution<Scalar> uniform(Scalar(-1), Scalar(1));
+        
+        Scalar rx, ry, rz, coeff;
 
-        Scalar rx = uniform(rng);
-        Scalar ry = uniform(rng);
-        Scalar rz = uniform(rng);
+	Scalar gamma;
+	if (m_use_lambda)
+	    gamma = m_lambda*h_diameter.data[j];
+	else
+	    {
+	    unsigned int type = __scalar_as_int(h_pos.data[j].w);
+	    gamma = h_gamma.data[type];
+	    }
 
-        Scalar gamma;
-        if (m_use_lambda)
-            gamma = m_lambda*h_diameter.data[j];
-        else
-            {
-            unsigned int type = __scalar_as_int(h_pos.data[j].w);
-            gamma = h_gamma.data[type];
-            }
+	Scalar3 normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
+	Scalar ndotn = dot(normal,normal);
 
-        // compute the bd force
-        Scalar coeff = fast::sqrt(Scalar(6.0) *gamma*currentTemp/m_deltaT);
-        if (m_noiseless_t)
-            coeff = Scalar(0.0);
+        if(currentTemp > 0)
+	{
+		hoomd::UniformDistribution<Scalar> uniform(Scalar(-1), Scalar(1));
+
+		rx = uniform(rng);
+		ry = uniform(rng);
+		rz = uniform(rng);
+
+		// compute the bd force
+		coeff = fast::sqrt(Scalar(6.0) *gamma*currentTemp/m_deltaT);
+		if (m_noiseless_t)
+		    coeff = Scalar(0.0);
+
+		Scalar proj_x = normal.x/fast::sqrt(ndotn);
+		Scalar proj_y = normal.y/fast::sqrt(ndotn);
+		Scalar proj_z = normal.z/fast::sqrt(ndotn);
+		
+		Scalar proj_r = rx*proj_x + ry*proj_y + rz*proj_z;
+		rx = rx - proj_r*proj_x;
+		ry = ry - proj_r*proj_y;
+		rz = rz - proj_r*proj_z;
+	}
+	else
+	{
+           	rx = 0;
+           	ry = 0;
+           	rz = 0;
+           	coeff = 0;
+	}
+
 
 	//calculate tangent vectors
 	//Scalar3 normal, tu, tv;
@@ -386,8 +412,6 @@ void TwoStepRATTLELangevin::integrateStepTwo(unsigned int timestep)
         h_accel.data[j].x = (h_net_force.data[j].x + bd_fx)*inv_mass;
         h_accel.data[j].y = (h_net_force.data[j].y + bd_fy)*inv_mass;
         h_accel.data[j].z = (h_net_force.data[j].z + bd_fz)*inv_mass;
-
-        Scalar3 normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
 
         Scalar mu = 0;
         Scalar inv_alpha = -Scalar(1.0/2.0)*m_deltaT;

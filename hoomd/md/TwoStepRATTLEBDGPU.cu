@@ -168,12 +168,12 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
 
         // update position
 
-	Scalar lambda = 0.0;
+	Scalar mu = 0.0;
         
 	Scalar3 next_pos;
-	next_pos.x = d_pos[idx].x;
-	next_pos.y = d_pos[idx].y;
-	next_pos.z = d_pos[idx].z;
+	next_pos.x = postype.x;
+	next_pos.y = postype.y;
+	next_pos.z = postype.z;
 
         EvaluatorConstraintManifold manifold(L);
         Scalar3 normal = manifold.evalNormal(next_pos);
@@ -191,9 +191,9 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
 	do
 	{
 	    iteration++;
-	    residual.x = postype.x - next_pos.x + (net_force.x + Fr_x - lambda*normal.x) * deltaT_gamma;
-	    residual.y = postype.y - next_pos.y + (net_force.y + Fr_y - lambda*normal.y) * deltaT_gamma;
-	    residual.z = postype.z - next_pos.z + (net_force.z + Fr_z - lambda*normal.z) * deltaT_gamma;
+	    residual.x = postype.x - next_pos.x + (net_force.x + Fr_x - mu*normal.x) * deltaT_gamma;
+	    residual.y = postype.y - next_pos.y + (net_force.y + Fr_y - mu*normal.y) * deltaT_gamma;
+	    residual.z = postype.z - next_pos.z + (net_force.z + Fr_z - mu*normal.z) * deltaT_gamma;
 	    resid = manifold.implicit_function(next_pos);
 
             Scalar3 next_normal =  manifold.evalNormal(next_pos);
@@ -204,14 +204,14 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
             next_pos.x = next_pos.x - beta*normal.x + residual.x;   
             next_pos.y = next_pos.y - beta*normal.y + residual.y;   
             next_pos.z = next_pos.z - beta*normal.z + residual.z;
-	    lambda = lambda - beta*inv_alpha;
+	    mu = mu - beta*inv_alpha;
 	 
 	} while (maxNorm(residual,resid) > eta && iteration < maxiteration );
 
 
-        postype.x += (net_force.x + Fr_x - lambda*normal.x) * deltaT / gamma;
-        postype.y += (net_force.y + Fr_y - lambda*normal.y) * deltaT / gamma;
-        postype.z += (net_force.z + Fr_z - lambda*normal.z) * deltaT / gamma;
+        postype.x += (net_force.x + Fr_x - mu*normal.x) * deltaT / gamma;
+        postype.y += (net_force.y + Fr_y - mu*normal.y) * deltaT / gamma;
+        postype.z += (net_force.z + Fr_z - mu*normal.z) * deltaT / gamma;
 
         // particles may have been moved slightly outside the box by the above steps, wrap them back into place
         box.wrap(postype, image);
