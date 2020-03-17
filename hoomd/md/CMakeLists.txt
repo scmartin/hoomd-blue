@@ -77,6 +77,7 @@ set(_md_headers ActiveForceComputeGPU.h
                 EvaluatorSpecialPairLJ.h
                 EvaluatorSpecialPairCoulomb.h
                 EvaluatorConstraintEllipsoid.h
+                EvaluatorConstraintManifold.h
                 EvaluatorConstraint.h
                 EvaluatorConstraintSphere.h
                 EvaluatorExternalElectricField.h
@@ -159,11 +160,13 @@ set(_md_headers ActiveForceComputeGPU.h
                 TablePotential.h
                 TempRescaleUpdater.h
                 TwoStepBDGPU.h
+                TwoStepRATTLEBDGPU.h
                 TwoStepBD.h
                 TwoStepBerendsenGPU.h
                 TwoStepBerendsen.h
                 TwoStepLangevinBase.h
                 TwoStepLangevinGPU.h
+                TwoStepRATTLELangevinGPU.h
                 TwoStepLangevin.h
                 TwoStepNPTMTKGPU.h
                 TwoStepNPTMTK.h
@@ -204,8 +207,10 @@ list(APPEND _md_sources ActiveForceComputeGPU.cc
                            TableDihedralForceComputeGPU.cc
                            TablePotentialGPU.cc
                            TwoStepBDGPU.cc
+                           TwoStepRATTLEBDGPU.cc
                            TwoStepBerendsenGPU.cc
                            TwoStepLangevinGPU.cc
+                           TwoStepRATTLELangevinGPU.cc
                            TwoStepNPTMTKGPU.cc
                            TwoStepNVEGPU.cc
                            TwoStepRATTLENVEGPU.cc
@@ -261,8 +266,10 @@ set(_md_cu_sources ActiveForceComputeGPU.cu
                       TableDihedralForceGPU.cu
                       TablePotentialGPU.cu
                       TwoStepBDGPU.cu
+                      TwoStepRATTLEBDGPU.cu
                       TwoStepBerendsenGPU.cu
                       TwoStepLangevinGPU.cu
+                      TwoStepRATTLELangevinGPU.cu
                       TwoStepNPTMTKGPU.cu
                       TwoStepNVEGPU.cu
                       TwoStepRATTLENVEGPU.cu

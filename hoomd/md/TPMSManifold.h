@@ -31,7 +31,7 @@ class PYBIND11_EXPORT TPMSManifold : public Manifold
         */
         TPMSManifold(std::shared_ptr<SystemDefinition> sysdef,
                   std::string surf, 
-                  unsigned int Nx,
+                 unsigned int Nx,
                   unsigned int Ny,
                   unsigned int Nz);
 
@@ -48,6 +48,8 @@ class PYBIND11_EXPORT TPMSManifold : public Manifold
         */
         Scalar3 derivative(Scalar3 point);
 
+	Scalar Lx;
+
     protected:
         std::string m_surf; //! determines the specific TPMS
         Scalar m_Nx; //! number of unit cells in x direction
@@ -60,7 +62,6 @@ class PYBIND11_EXPORT TPMSManifold : public Manifold
 	bool gyroid=false;
 	bool diamond=false;
 	bool primitive=false;
-	Scalar Lx;
 	Scalar Ly;
 	Scalar Lz;
 	

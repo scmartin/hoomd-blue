@@ -12,7 +12,6 @@
 
 #include "Manifold.h"
 
-
 /*! \file ActiveForceCompute.h
     \brief Declares a class for computing active forces and torques
 */

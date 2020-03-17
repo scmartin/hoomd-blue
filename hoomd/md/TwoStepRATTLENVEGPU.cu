@@ -5,11 +5,12 @@
 // Maintainer: joaander
 
 #include "TwoStepRATTLENVEGPU.cuh"
+#include "EvaluatorConstraintManifold.h"
 #include "hoomd/VectorMath.h"
 
 #include <assert.h>
 
-inline Scalar maxNorm(Scalar3 vec, Scalar resid)
+inline __device__ Scalar maxNorm(Scalar3 vec, Scalar resid)
     {
     Scalar vec_norm = sqrt(dot(vec,vec));
     Scalar abs_resid = fabs(resid);
@@ -53,7 +54,7 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
                              const unsigned int nwork,
                              const unsigned int offset,
                              BoxDim box,
-                             Manifold manifold,
+                             Scalar L,
                              Scalar eta,
                              Scalar deltaT,
                              bool limit,
@@ -65,6 +66,8 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
 
     if (work_idx < nwork)
         {
+
+        EvaluatorConstraintManifold manifold(L);
         const unsigned int group_idx = work_idx + offset;
         unsigned int idx = d_group_members[group_idx];
         unsigned int maxiteration = 10;
@@ -77,7 +80,7 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
         Scalar4 postype = d_pos[idx];
         Scalar3 pos = make_scalar3(postype.x, postype.y, postype.z);
 
-	Scalar3 normal = manifold->derivative(pos);
+    	Scalar3 normal = manifold.evalNormal(pos); // the normal vector to which the particles are confined.
 
         // read the particle's velocity and acceleration (MEM TRANSFER: 32 bytes)
         Scalar4 velmass = d_vel[idx];
@@ -88,7 +91,7 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
             accel = d_accel[idx];
 
 	Scalar lambda = 0.0;
-	Scalar inv_mass = Scalar(1.0)/velmas.w;
+	Scalar inv_mass = Scalar(1.0)/velmass.w;
 	Scalar deltaT_half = Scalar(1.0/2.0)*deltaT;
 	Scalar inv_alpha = -deltaT_half*deltaT*inv_mass;
 	inv_alpha = Scalar(1.0)/inv_alpha;
@@ -106,9 +109,9 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
             half_vel = vel + deltaT_half*accel-deltaT_half*inv_mass*lambda*normal;
 
 	    residual = pos - next_pos + deltaT*half_vel;
-	    resid = manifold->implicit_function(next_pos);
+	    resid = manifold.implicit_function(next_pos);
 
-            Scalar3 next_normal =  manifold->derivative(next_pos);
+            Scalar3 next_normal =  manifold.evalNormal(next_pos);
 	    Scalar nndotr = dot(next_normal,residual);
 	    Scalar nndotn = dot(next_normal,normal);
 	    Scalar beta = (resid + nndotr)/nndotn;
@@ -170,7 +173,7 @@ cudaError_t gpu_rattle_nve_step_one(Scalar4 *d_pos,
                              unsigned int *d_group_members,
                              const GPUPartition& gpu_partition,
                              const BoxDim& box,
-                             Manifold manifold,
+                             Scalar L,
                              Scalar eta,
                              Scalar deltaT,
                              bool limit,
@@ -200,7 +203,7 @@ cudaError_t gpu_rattle_nve_step_one(Scalar4 *d_pos,
         dim3 threads(run_block_size, 1, 1);
 
         // run the kernel
-        gpu_rattle_nve_step_one_kernel<<< grid, threads >>>(d_pos, d_vel, d_accel, d_image, d_group_members, nwork, range.first, box, manifold, eta, deltaT, limit, limit_val, zero_force);
+        gpu_rattle_nve_step_one_kernel<<< grid, threads >>>(d_pos, d_vel, d_accel, d_image, d_group_members, nwork, range.first, box, L, eta, deltaT, limit, limit_val, zero_force);
         }
 
     return cudaSuccess;
@@ -400,7 +403,7 @@ void gpu_rattle_nve_step_two_kernel(
                             const unsigned int nwork,
                             const unsigned int offset,
                             Scalar4 *d_net_force,
-                            Manifold manifold,
+                            Scalar L,
                             Scalar eta,
                             Scalar deltaT,
                             bool limit,
@@ -415,7 +418,7 @@ void gpu_rattle_nve_step_two_kernel(
         const unsigned int group_idx = work_idx + offset;
         unsigned int idx = d_group_members[group_idx];
 
-        Scalar3 pos = make_scalar3(d_pos.x, d_pos.y, d.pos.z);
+        Scalar3 pos = make_scalar3(d_pos[idx].x, d_pos[idx].y, d_pos[idx].z);
 
         // read in the net forc and calculate the acceleration MEM TRANSFER: 16 bytes
         Scalar3 accel = make_scalar3(Scalar(0.0), Scalar(0.0), Scalar(0.0));
@@ -443,10 +446,12 @@ void gpu_rattle_nve_step_two_kernel(
 
         Scalar mu = 0;
         Scalar inv_alpha = -Scalar(1.0/2.0)*deltaT;
-	inv_alpha = Scalar(1.0)/vel.w;
-	Scalar inv_mass = Scalar(1.0)/;
+	inv_alpha = Scalar(1.0)/inv_alpha;
+	Scalar mass = vel.w;
+	Scalar inv_mass = Scalar(1.0)/mass;
    
-        Scalar3 normal = manifold->derivative(pos);
+        EvaluatorConstraintManifold manifold(L);
+        Scalar3 normal = manifold.evalNormal(pos);
    
         Scalar3 next_vel; 
         next_vel.x = vel.x + Scalar(1.0/2.0)*deltaT*accel.x;
@@ -465,9 +470,9 @@ void gpu_rattle_nve_step_two_kernel(
             vel_dot.y = accel.y - mu*inv_mass*normal.y;
             vel_dot.z = accel.z - mu*inv_mass*normal.z;
 
-            residual.x = h_vel.data[j].x - next_vel.x + Scalar(1.0/2.0)*deltaT*vel_dot.x;
-            residual.y = h_vel.data[j].y - next_vel.y + Scalar(1.0/2.0)*deltaT*vel_dot.y;
-            residual.z = h_vel.data[j].z - next_vel.z + Scalar(1.0/2.0)*deltaT*vel_dot.z;
+            residual.x = vel.x - next_vel.x + Scalar(1.0/2.0)*deltaT*vel_dot.x;
+            residual.y = vel.y - next_vel.y + Scalar(1.0/2.0)*deltaT*vel_dot.y;
+            residual.z = vel.z - next_vel.z + Scalar(1.0/2.0)*deltaT*vel_dot.z;
             resid = dot(normal, next_vel)*inv_mass;
 
 	    Scalar ndotr = dot(normal,residual);
@@ -522,7 +527,7 @@ cudaError_t gpu_rattle_nve_step_two(Scalar4 *d_pos,
                              unsigned int *d_group_members,
                              const GPUPartition& gpu_partition,
                              Scalar4 *d_net_force,
-                             Manifold manifold,
+                             Scalar L,
                              Scalar eta,
                              Scalar deltaT,
                              bool limit,
@@ -552,14 +557,14 @@ cudaError_t gpu_rattle_nve_step_two(Scalar4 *d_pos,
         dim3 threads(run_block_size, 1, 1);
 
         // run the kernel
-        gpu__rattle_nve_step_two_kernel<<< grid, threads >>>(d_pos,
+        gpu_rattle_nve_step_two_kernel<<< grid, threads >>>(d_pos,
                                                      d_vel,
                                                      d_accel,
                                                      d_group_members,
                                                      nwork,
                                                      range.first,
                                                      d_net_force,
-                                                     manifold,
+                                                     L,
                                                      eta,
                                                      deltaT,
                                                      limit,

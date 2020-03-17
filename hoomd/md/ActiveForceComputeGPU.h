@@ -30,10 +30,12 @@ class PYBIND11_EXPORT ActiveForceComputeGPU : public ActiveForceCompute
                              std::shared_ptr<ParticleGroup> group,
                              int seed, pybind11::list f_lst, pybind11::list t_lst,
                              bool orientation_link, bool orientation_reverse_link, Scalar rotation_diff,
-                             Scalar3 P,
-                             Scalar rx,
-                             Scalar ry,
-                             Scalar rz);
+			     Scalar L, bool constraint);
+
+        //void addManifold(std::shared_ptr<Manifold> manifold){
+	//	m_manifold = manifold;
+	//	m_constraint = true;
+	//};
 
     protected:
         unsigned int m_block_size;  //!< block size to execute on the GPU
@@ -48,6 +50,7 @@ class PYBIND11_EXPORT ActiveForceComputeGPU : public ActiveForceCompute
         virtual void setConstraint();
 
         GPUArray<unsigned int>  m_groupTags; //! Stores list converting group index to global tag
+        Scalar m_L;
     };
 
 //! Exports the ActiveForceComputeGPU Class to python

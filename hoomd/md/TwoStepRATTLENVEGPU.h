@@ -30,7 +30,7 @@ class PYBIND11_EXPORT TwoStepRATTLENVEGPU : public TwoStepRATTLENVE
     {
     public:
         //! Constructs the integration method and associates it with the system
-        TwoStepRATTLENVEGPU(std::shared_ptr<SystemDefinition> sysdef, std::shared_ptr<ParticleGroup> group,std::shared_ptr<Manifold> manifold);
+        TwoStepRATTLENVEGPU(std::shared_ptr<SystemDefinition> sysdef, std::shared_ptr<ParticleGroup> group,std::shared_ptr<Manifold> manifold, Scalar L);
         virtual ~TwoStepRATTLENVEGPU() {};
 
         //! Performs the first step of the integration
@@ -45,7 +45,7 @@ class PYBIND11_EXPORT TwoStepRATTLENVEGPU : public TwoStepRATTLENVE
         */
         virtual void setAutotunerParams(bool enable, unsigned int period)
             {
-            TwoStepNVE::setAutotunerParams(enable, period);
+            TwoStepRATTLENVE::setAutotunerParams(enable, period);
             m_tuner_one->setPeriod(period);
             m_tuner_one->setEnabled(enable);
             m_tuner_two->setPeriod(period);
@@ -61,9 +61,11 @@ class PYBIND11_EXPORT TwoStepRATTLENVEGPU : public TwoStepRATTLENVE
         std::unique_ptr<Autotuner> m_tuner_two; //!< Autotuner for block size (step two kernel)
         std::unique_ptr<Autotuner> m_tuner_angular_one; //!< Autotuner for block size (angular step one kernel)
         std::unique_ptr<Autotuner> m_tuner_angular_two; //!< Autotuner for block size (angular step two kernel)
+    protected:
+	Scalar m_L;
     };
 
 //! Exports the TwoStepRATTLENVEGPU class to python
-void export_TwoStepRATLENVEGPU(pybind11::module& m);
+void export_TwoStepRATTLENVEGPU(pybind11::module& m);
 
 #endif // #ifndef __TWO_STEP_RATTLE_NVE_GPU_H__

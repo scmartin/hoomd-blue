@@ -5,8 +5,8 @@
 // Maintainer: joaander
 
 #include "ActiveForceComputeGPU.cuh"
-#include "EvaluatorConstraintEllipsoid.h"
 #include "hoomd/RandomNumbers.h"
+#include "EvaluatorConstraintManifold.h"
 #include "hoomd/RNGIdentifiers.h"
 using namespace hoomd;
 
@@ -43,10 +43,8 @@ __global__ void gpu_compute_active_force_set_forces_kernel(const unsigned int gr
                                                     Scalar *d_f_actMag,
                                                     Scalar3 *d_t_actVec,
                                                     Scalar *d_t_actMag,
-                                                    const Scalar3& P,
-                                                    Scalar rx,
-                                                    Scalar ry,
-                                                    Scalar rz,
+                                                    Scalar L,
+                                                    bool constraint,
                                                     bool orientationLink,
                                                     bool orientationReverseLink,
                                                     const unsigned int N)
@@ -128,10 +126,8 @@ __global__ void gpu_compute_active_force_set_constraints_kernel(const unsigned i
                                                    const Scalar4 *d_pos,
                                                    Scalar3 *d_f_actVec,
                                                    Scalar3 *d_t_actVec,
-                                                   const Scalar3& P,
-                                                   Scalar rx,
-                                                   Scalar ry,
-                                                   Scalar rz)
+                                                   Scalar L,
+						   bool constraint)
     {
     unsigned int group_idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (group_idx >= group_size)
@@ -140,10 +136,13 @@ __global__ void gpu_compute_active_force_set_constraints_kernel(const unsigned i
     unsigned int tag = d_groupTags[group_idx];
     unsigned int idx = d_rtag[tag];
 
-    EvaluatorConstraintEllipsoid Ellipsoid(P, rx, ry, rz);
     Scalar3 current_pos = make_scalar3(d_pos[idx].x, d_pos[idx].y, d_pos[idx].z);
+    
+    EvaluatorConstraintManifold manifold(L);
 
-    Scalar3 norm_scalar3 = Ellipsoid.evalNormal(current_pos); // the normal vector to which the particles are confined.
+    Scalar3 norm_scalar3 = manifold.evalNormal(current_pos); // the normal vector to which the particles are confined.
+    Scalar nNorm =  slow::sqrt(norm_scalar3.x*norm_scalar3.x + norm_scalar3.y*norm_scalar3.y + norm_scalar3.z*norm_scalar3.z);
+    norm_scalar3 = norm_scalar3/nNorm;
     vec3<Scalar> norm;
     norm = vec3<Scalar>(norm_scalar3);
     Scalar f_dot_prod = d_f_actVec[tag].x * norm.x + d_f_actVec[tag].y * norm.y + d_f_actVec[tag].z * norm.z;
@@ -197,10 +196,8 @@ __global__ void gpu_compute_active_force_rotational_diffusion_kernel(const unsig
                                                    const Scalar4 *d_pos,
                                                    Scalar3 *d_f_actVec,
                                                    Scalar3 *d_t_actVec,
-                                                   const Scalar3& P,
-                                                   Scalar rx,
-                                                   Scalar ry,
-                                                   Scalar rz,
+                                                   Scalar L,
+                                                   bool constraint,
                                                    bool is2D,
                                                    const Scalar rotationDiff,
                                                    const unsigned int timestep,
@@ -227,7 +224,7 @@ __global__ void gpu_compute_active_force_rotational_diffusion_kernel(const unsig
         }
     else // 3D: Following Stenhammar, Soft Matter, 2014
         {
-        if (rx == 0) // if no constraint
+        if (!constraint) // if no constraint
             {
             hoomd::SpherePointGenerator<Scalar> unit_vec;
             vec3<Scalar> rand_vec;
@@ -260,10 +257,13 @@ __global__ void gpu_compute_active_force_rotational_diffusion_kernel(const unsig
             }
         else // if constraint
             {
-            EvaluatorConstraintEllipsoid Ellipsoid(P, rx, ry, rz);
             Scalar3 current_pos = make_scalar3(d_pos[idx].x, d_pos[idx].y, d_pos[idx].z);
 
-            Scalar3 norm_scalar3 = Ellipsoid.evalNormal(current_pos); // the normal vector to which the particles are confined.
+    	    EvaluatorConstraintManifold manifold(L);
+
+   	    Scalar3 norm_scalar3 = manifold.evalNormal(current_pos);; // the normal vector to which the particles are confined.
+	    Scalar nNorm =  slow::sqrt(norm_scalar3.x*norm_scalar3.x + norm_scalar3.y*norm_scalar3.y + norm_scalar3.z*norm_scalar3.z);
+	    norm_scalar3 = norm_scalar3/nNorm;
             vec3<Scalar> norm;
             norm = vec3<Scalar> (norm_scalar3);
 
@@ -300,10 +300,8 @@ cudaError_t gpu_compute_active_force_set_forces(const unsigned int group_size,
                                            Scalar *d_f_actMag,
                                            Scalar3 *d_t_actVec,
                                            Scalar *d_t_actMag,
-                                           const Scalar3& P,
-                                           Scalar rx,
-                                           Scalar ry,
-                                           Scalar rz,
+                                           Scalar L,
+                                           bool constraint,
                                            bool orientationLink,
                                            bool orientationReverseLink,
                                            const unsigned int N,
@@ -325,10 +323,8 @@ cudaError_t gpu_compute_active_force_set_forces(const unsigned int group_size,
                                                                     d_f_actMag,
                                                                     d_t_actVec,
                                                                     d_t_actMag,
-                                                                    P,
-                                                                    rx,
-                                                                    ry,
-                                                                    rz,
+                                           			    L,
+                                           			    constraint,
                                                                     orientationLink,
                                                                     orientationReverseLink,
                                                                     N);
@@ -343,10 +339,8 @@ cudaError_t gpu_compute_active_force_set_constraints(const unsigned int group_si
                                                    Scalar4 *d_torque,
                                                    Scalar3 *d_f_actVec,
                                                    Scalar3 *d_t_actVec,
-                                                   const Scalar3& P,
-                                                   Scalar rx,
-                                                   Scalar ry,
-                                                   Scalar rz,
+                                           	   Scalar L,
+                                           	   bool constraint,
                                                    unsigned int block_size)
     {
     // setup the grid to run the kernel
@@ -360,10 +354,8 @@ cudaError_t gpu_compute_active_force_set_constraints(const unsigned int group_si
                                                                     d_pos,
                                                                     d_f_actVec,
                                                                     d_t_actVec,
-                                                                    P,
-                                                                    rx,
-                                                                    ry,
-                                                                    rz);
+                                                                    L,
+                                                                    constraint);
     return cudaSuccess;
     }
 
@@ -375,10 +367,8 @@ cudaError_t gpu_compute_active_force_rotational_diffusion(const unsigned int gro
                                                        Scalar4 *d_torque,
                                                        Scalar3 *d_f_actVec,
                                                        Scalar3 *d_t_actVec,
-                                                       const Scalar3& P,
-                                                       Scalar rx,
-                                                       Scalar ry,
-                                                       Scalar rz,
+                                                       Scalar L,
+                                                       bool constraint,
                                                        bool is2D,
                                                        const Scalar rotationDiff,
                                                        const unsigned int timestep,
@@ -386,6 +376,7 @@ cudaError_t gpu_compute_active_force_rotational_diffusion(const unsigned int gro
                                                        unsigned int block_size)
     {
     // setup the grid to run the kernel
+
     dim3 grid( group_size / block_size + 1, 1, 1);
     dim3 threads(block_size, 1, 1);
 
@@ -396,10 +387,8 @@ cudaError_t gpu_compute_active_force_rotational_diffusion(const unsigned int gro
                                                                     d_pos,
                                                                     d_f_actVec,
                                                                     d_t_actVec,
-                                                                    P,
-                                                                    rx,
-                                                                    ry,
-                                                                    rz,
+                                                                    L,
+								    constraint,
                                                                     is2D,
                                                                     rotationDiff,
                                                                     timestep,

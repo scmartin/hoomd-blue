@@ -417,7 +417,7 @@ class active(_force):
         ellipsoid = update.constraint_ellipsoid(group=groupA, P=(0,0,0), rx=3, ry=4, rz=5)
         force.active( seed=7, f_list=[tuple(1,2,3) for i in range(N)], orientation_link=False, rotation_diff=100, constraint=ellipsoid)
     """
-    def __init__(self, seed, group, f_lst=None, t_lst=None, orientation_link=True, orientation_reverse_link=False, rotation_diff=0, manifold=None):
+    def __init__(self, seed, group, f_lst=None, t_lst=None, orientation_link=True, orientation_reverse_link=False, rotation_diff=0, manifold=None, Lx=0):
         hoomd.util.print_status_line();
 
         # initialize the base class
@@ -449,12 +449,24 @@ class active(_force):
         if not hoomd.context.exec_conf.isCUDAEnabled():
             self.cpp_force = _md.ActiveForceCompute(hoomd.context.current.system_definition, group.cpp_group, seed, f_lst, t_lst,
                                                       orientation_link, orientation_reverse_link, rotation_diff);
-        else:
-            self.cpp_force = _md.ActiveForceComputeGPU(hoomd.context.current.system_definition, group.cpp_group, seed, f_lst, t_lst,
-                                                         orientation_link, orientation_reverse_link, rotation_diff);
+            if (manifold is not None):
+                  self.cpp_force.addManifold(manifold.cpp_manifold)
+        else: 
+            L = 0
+            contrain = False
+            if (manifold is not None):
+                contrain = True
+                if (manifold.__class__.__name__ is "tpms_manifold"):
+                     L = Lx
+                else:
+                     if (manifold.__class__.__name__ is "plane_manifold"):     
+                            L =-1
+                     else:
+                            raise RuntimeError("Active force constraint is not accepted (currently only accepts gyroid and plane)")
+        
+        self.cpp_force = _md.ActiveForceComputeGPU(hoomd.context.current.system_definition, group.cpp_group, seed, f_lst, t_lst,
+                                                         orientation_link, orientation_reverse_link, rotation_diff, L,False);
 
-        if (manifold is not None):
-            self.cpp_force.addManifold(manifold.cpp_manifold)
 
 
         # store metadata

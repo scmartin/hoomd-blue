@@ -32,11 +32,9 @@ ActiveForceComputeGPU::ActiveForceComputeGPU(std::shared_ptr<SystemDefinition> s
                                         bool orientation_link,
                                         bool orientation_reverse_link,
                                         Scalar rotation_diff,
-                                        Scalar3 P,
-                                        Scalar rx,
-                                        Scalar ry,
-                                        Scalar rz)
-        : ActiveForceCompute(sysdef, group, seed, f_lst, t_lst, orientation_link, orientation_reverse_link, rotation_diff, P, rx, ry, rz), m_block_size(256)
+					Scalar L,
+					bool constraint)
+        : ActiveForceCompute(sysdef, group, seed, f_lst, t_lst, orientation_link, orientation_reverse_link, rotation_diff), m_L(L), m_block_size(256)
     {
     if (!m_exec_conf->isCUDAEnabled())
         {
@@ -85,7 +83,11 @@ ActiveForceComputeGPU::ActiveForceComputeGPU(std::shared_ptr<SystemDefinition> s
     m_t_activeVec.swap(tmp_t_activeVec);
     m_t_activeMag.swap(tmp_t_activeMag);
     m_groupTags.swap(tmp_groupTags);
+
+
+    if(constraint) m_constraint=true;
     }
+
 
 /*! This function sets appropriate active forces and torques on all active particles.
 */
@@ -128,10 +130,8 @@ void ActiveForceComputeGPU::setForces()
                                      d_f_actMag.data,
                                      d_t_actVec.data,
                                      d_t_actMag.data,
-                                     m_P,
-                                     m_rx,
-                                     m_ry,
-                                     m_rz,
+                                     m_L,
+                                     m_constraint,
                                      orientationLink,
                                      orientationReverseLink,
                                      N,
@@ -166,10 +166,8 @@ void ActiveForceComputeGPU::rotationalDiffusion(unsigned int timestep)
                                                 d_torque.data,
                                                 d_f_actVec.data,
                                                 d_t_actVec.data,
-                                                m_P,
-                                                m_rx,
-                                                m_ry,
-                                                m_rz,
+                                     		m_L,
+                                     		m_constraint,
                                                 is2D,
                                                 m_rotationConst,
                                                 timestep,
@@ -177,12 +175,10 @@ void ActiveForceComputeGPU::rotationalDiffusion(unsigned int timestep)
                                                 m_block_size);
     }
 
-/*! This function sets an ellipsoid surface constraint for all active particles
+/*! This function sets an ellipsoid surface constraint for all active particles. Torque is not considered here
 */
 void ActiveForceComputeGPU::setConstraint()
     {
-    EvaluatorConstraintEllipsoid Ellipsoid(m_P, m_rx, m_ry, m_rz);
-
     //  array handles
     ArrayHandle<Scalar3> d_f_actVec(m_f_activeVec, access_location::device, access_mode::readwrite);
     ArrayHandle<Scalar3> d_t_actVec(m_t_activeVec, access_location::device, access_mode::readwrite);
@@ -204,10 +200,8 @@ void ActiveForceComputeGPU::setConstraint()
                                              d_torque.data,
                                              d_f_actVec.data,
                                              d_t_actVec.data,
-                                             m_P,
-                                             m_rx,
-                                             m_ry,
-                                             m_rz,
+                                     	     m_L,
+                                     	     m_constraint,
                                              m_block_size);
     }
 
@@ -222,9 +216,7 @@ void export_ActiveForceComputeGPU(py::module& m)
                         bool,
                         bool,
                         Scalar,
-                        Scalar3,
                         Scalar,
-                        Scalar,
-                        Scalar >())
+                        bool >())
     ;
     }

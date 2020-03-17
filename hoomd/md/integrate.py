@@ -906,7 +906,7 @@ class nve_rattle(_integration_method):
         integrate.nve_rattle(group=typeA, zero_force=True)
 
     """
-    def __init__(self, group, manifold, limit=None, eta=0.000001, zero_force=False):
+    def __init__(self, group, manifold, limit=None, eta=0.000001, zero_force=False,Lx=0):
         hoomd.util.print_status_line();
 
         # initialize base class
@@ -920,7 +920,16 @@ class nve_rattle(_integration_method):
             self.cpp_method = _md.TwoStepRATTLENVE(hoomd.context.current.system_definition, group.cpp_group, manifold.cpp_manifold, False, eta);
         else:
             #raise RuntimeError("Not supported on GPU yet");
-            self.cpp_method = _md.TwoStepRATTLENVEGPU(hoomd.context.current.system_definition, group.cpp_group,manifold.cpp_manifold, eta);
+            L = 0
+            if (manifold is not None):
+                if (manifold.__class__.__name__ is "tpms_manifold"):
+                     L = Lx
+                else:
+                     if (manifold.__class__.__name__ is "plane_manifold"):
+                            L =-1
+                     else:
+                            raise RuntimeError("Active force constraint is not accepted (currently only accepts gyroid and plane)")
+            self.cpp_method = _md.TwoStepRATTLENVEGPU(hoomd.context.current.system_definition, group.cpp_group,manifold.cpp_manifold,L);
 
         # set the limit
         if limit is not None:
@@ -1288,7 +1297,7 @@ class langevin_rattle(_integration_method):
         integrator = integrate.langevin_rattle(group=typeA, manifold=sphere, kT=hoomd.variant.linear_interp([(0, 4.0), (1e6, 1.0)]), seed=10)
 
     """
-    def __init__(self, group, manifold, kT, seed, dscale=False, tally=False, noiseless_t=False, noiseless_r=False, eta=0.000001):
+    def __init__(self, group, manifold, kT, seed, dscale=False, tally=False, noiseless_t=False, noiseless_r=False, eta=0.000001,Lx=0):
         hoomd.util.print_status_line();
 
         # initialize base class
@@ -1323,17 +1332,27 @@ class langevin_rattle(_integration_method):
                                    suffix);
         else:
             raise RuntimeError("Not supported on GPU yet");
-            #self.cpp_method = _md.TwoStepLangevinGPU(hoomd.context.current.system_definition,
-            #                       group.cpp_group,
-	    #    		    manifold.cpp_manifold,
-            #                       kT.cpp_variant,
-            #                       seed,
-            #                       use_lambda,
-            #                       float(dscale),
-            #                       noiseless_t,
-            #                       noiseless_r,
-	    #    		    eta,
-            #                       suffix);
+            L = 0
+            if (manifold is not None):
+                if (manifold.__class__.__name__ is "tpms_manifold"):
+                     L = Lx
+                else:
+                     if (manifold.__class__.__name__ is "plane_manifold"):
+                            L =-1
+                     else:
+                            raise RuntimeError("Active force constraint is not accepted (currently only accepts gyroid and plane)")
+            self.cpp_method = _md.TwoStepRATTLELangevinGPU(hoomd.context.current.system_definition,
+                                   group.cpp_group,
+	        		   manifold.cpp_manifold,
+                                   kT.cpp_variant,
+				   L,
+                                   seed,
+                                   use_lambda,
+                                   float(dscale),
+                                   noiseless_t,
+                                   noiseless_r,
+	        		    eta,
+                                   suffix);
 
         self.cpp_method.setTally(tally);
 
@@ -1739,7 +1758,7 @@ class brownian_rattle(_integration_method):
         integrator = integrate.brownian(group=typeA, manifold=sphere, kT=hoomd.variant.linear_interp([(0, 4.0), (1e6, 1.0)]), seed=10, eta=0.000001)
 
     """
-    def __init__(self, group, manifold, kT, seed, dscale=False, noiseless_t=False, noiseless_r=False, eta=0.000001):
+    def __init__(self, group, manifold, kT, seed, dscale=False, noiseless_t=False, noiseless_r=False, eta=0.000001, Lx=0):
         hoomd.util.print_status_line();
 
         # initialize base class
@@ -1769,17 +1788,27 @@ class brownian_rattle(_integration_method):
                                    noiseless_r,
 				   eta);
         else:
-            raise RuntimeError("Not supported on GPU yet");
-        #    self.cpp_method = _md.TwoStepRATTLEBDGPU(hoomd.context.current.system_definition,
-        #                           group.cpp_group,
-	#			    manifold.cpp_manifold,
-        #                           kT.cpp_variant,
-        #                           seed,
-        #                           use_lambda,
-        #                           float(dscale),
-        #                           noiseless_t,
-        #                           noiseless_r,
-	#			    eta);
+            #raise RuntimeError("Not supported on GPU yet");
+            L = 0
+            if (manifold is not None):
+                if (manifold.__class__.__name__ is "tpms_manifold"):
+                     L = Lx
+                else:
+                     if (manifold.__class__.__name__ is "plane_manifold"):
+                            L =-1
+                     else:
+                            raise RuntimeError("Active force constraint is not accepted (currently only accepts gyroid and plane)")
+            self.cpp_method = _md.TwoStepRATTLEBDGPU(hoomd.context.current.system_definition,
+                                   group.cpp_group,
+				    manifold.cpp_manifold,
+                                   kT.cpp_variant,
+                                   L,
+                                   seed,
+                                   use_lambda,
+                                   float(dscale),
+                                   noiseless_t,
+                                   noiseless_r,
+				    eta);
 
         self.cpp_method.validateGroup()
 

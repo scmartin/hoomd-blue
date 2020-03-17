@@ -11,7 +11,6 @@
 #include "hoomd/ParticleData.cuh"
 #include "hoomd/HOOMDMath.h"
 #include "hoomd/GPUPartition.cuh"
-#include "Manifold.h"
 
 #ifndef __TWO_STEP_RATTLE_NVE_GPU_CUH__
 #define __TWO_STEP_RATTLE_NVE_GPU_CUH__
@@ -24,7 +23,7 @@ cudaError_t gpu_rattle_nve_step_one(Scalar4 *d_pos,
                              unsigned int *d_group_members,
                              const GPUPartition& gpu_partition,
                              const BoxDim& box,
-                             Manifold manifold,
+                             Scalar L,
                              Scalar eta,
                              Scalar deltaT,
                              bool limit,
@@ -39,7 +38,7 @@ cudaError_t gpu_rattle_nve_step_two(Scalar4 *d_pos,
                              unsigned int *d_group_members,
                              const GPUPartition& gpu_partition,
                              Scalar4 *d_net_force,
-                             Manifold manifold,
+                             Scalar L,
                              Scalar eta,
                              Scalar deltaT,
                              bool limit,

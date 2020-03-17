@@ -96,8 +96,10 @@
 #include "TableDihedralForceComputeGPU.h"
 #include "TablePotentialGPU.h"
 #include "TwoStepBDGPU.h"
+#include "TwoStepRATTLEBDGPU.h"
 #include "TwoStepBerendsenGPU.h"
 #include "TwoStepLangevinGPU.h"
+#include "TwoStepRATTLELangevinGPU.h"
 #include "TwoStepNPTMTKGPU.h"
 #include "TwoStepNVEGPU.h"
 #include "TwoStepRATTLENVEGPU.h"
@@ -402,7 +404,9 @@ PYBIND11_MODULE(_md, m)
     export_TwoStepRATTLENVEGPU(m);
     export_TwoStepNVTMTKGPU(m);
     export_TwoStepLangevinGPU(m);
+    export_TwoStepRATTLELangevinGPU(m);
     export_TwoStepBDGPU(m);
+    export_TwoStepRATTLEBDGPU(m);
     export_TwoStepNPTMTKGPU(m);
     export_BerendsenGPU(m);
     export_Enforce2DUpdaterGPU(m);
