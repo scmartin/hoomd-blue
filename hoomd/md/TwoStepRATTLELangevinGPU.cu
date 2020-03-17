@@ -121,29 +121,57 @@ __global__ void gpu_rattle_langevin_step_two_kernel(const Scalar4 *d_pos,
             gamma = s_gammas[typ];
             }
 
-        Scalar coeff = sqrtf(Scalar(6.0) * gamma * T / deltaT);
-        Scalar3 bd_force = make_scalar3(Scalar(0.0), Scalar(0.0), Scalar(0.0));
-        if (noiseless_t)
-            coeff = Scalar(0.0);
-
-        //Initialize the Random Number Generator and generate the 3 random numbers
-        RandomGenerator rng(RNGIdentifier::TwoStepLangevin, seed, ptag, timestep);
-        UniformDistribution<Scalar> uniform(-1, 1);
-
-        Scalar randomx = uniform(rng);
-        Scalar randomy = uniform(rng);
-        Scalar randomz = uniform(rng);
-
-        bd_force.x = randomx*coeff - gamma*vel.x;
-        bd_force.y = randomy*coeff - gamma*vel.y;
-        if (D > 2)
-            bd_force.z = randomz*coeff - gamma*vel.z;
-
         // read in the net force and calculate the acceleration MEM TRANSFER: 16 bytes
         Scalar4 net_force = d_net_force[idx];
         Scalar3 accel = make_scalar3(net_force.x,net_force.y,net_force.z);
 
         Scalar3 pos = make_scalar3(d_pos[idx].x,d_pos[idx].y,d_pos[idx].z);
+
+        //Initialize the Random Number Generator and generate the 3 random numbers
+        RandomGenerator rng(RNGIdentifier::TwoStepLangevin, seed, ptag, timestep);
+
+        EvaluatorConstraintManifold manifold(L);
+        Scalar3 normal = manifold.evalNormal(pos);
+	Scalar ndotn = dot(normal,normal);
+
+        Scalar randomx, randomy, randomz, coeff;
+   
+	if ( T > 0 ){
+        	UniformDistribution<Scalar> uniform(-1, 1);
+
+        	randomx = uniform(rng);
+        	randomy = uniform(rng);
+        	randomz = uniform(rng);
+
+                coeff = sqrtf(Scalar(6.0) * gamma * T / deltaT);
+                Scalar3 bd_force = make_scalar3(Scalar(0.0), Scalar(0.0), Scalar(0.0));
+                if (noiseless_t)
+                    coeff = Scalar(0.0);
+
+
+		Scalar proj_x = normal.x/fast::sqrt(ndotn);
+		Scalar proj_y = normal.y/fast::sqrt(ndotn);
+		Scalar proj_z = normal.z/fast::sqrt(ndotn);
+		
+		Scalar proj_r = randomx*proj_x + randomy*proj_y + randomz*proj_z;
+		randomx = randomx - proj_r*proj_x;
+		randomy = randomy - proj_r*proj_y;
+		randomz = randomz - proj_r*proj_z;
+	}
+	else
+	{
+           	randomx = 0;
+           	randomy = 0;
+           	randomz = 0;
+           	coeff = 0;
+	}
+
+	Scalar3 bd_force;
+
+        bd_force.x = randomx*coeff - gamma*vel.x;
+        bd_force.y = randomy*coeff - gamma*vel.y;
+        bd_force.z = randomz*coeff - gamma*vel.z;
+
         // MEM TRANSFER: 4 bytes   FLOPS: 3
         Scalar mass = vel.w;
         Scalar minv = Scalar(1.0) / mass;
@@ -154,9 +182,6 @@ __global__ void gpu_rattle_langevin_step_two_kernel(const Scalar4 *d_pos,
         // v(t+deltaT) = v(t+deltaT/2) + 1/2 * a(t+deltaT)*deltaT
         // update the velocity (FLOPS: 6)
 
-        EvaluatorConstraintManifold manifold(L);
-        Scalar3 normal = manifold.evalNormal(pos);
-   
         Scalar3 next_vel; 
         next_vel.x = vel.x + Scalar(1.0/2.0)*deltaT*accel.x;
         next_vel.y = vel.y + Scalar(1.0/2.0)*deltaT*accel.y;
@@ -185,7 +210,6 @@ __global__ void gpu_rattle_langevin_step_two_kernel(const Scalar4 *d_pos,
             resid = dot(normal, next_vel)*minv;
 
 	    Scalar ndotr = dot(normal,residual);
-	    Scalar ndotn = dot(normal,normal);
             Scalar beta = (mass*resid + ndotr)/ndotn;
             next_vel.x = next_vel.x - normal.x*beta + residual.x;
             next_vel.y = next_vel.y - normal.y*beta + residual.y;

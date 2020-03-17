@@ -133,13 +133,6 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
         // read in the tag of our particle.
         unsigned int ptag = d_tag[idx];
 
-        // compute the random force
-        RandomGenerator rng(RNGIdentifier::TwoStepBD, seed, ptag, timestep);
-        UniformDistribution<Scalar> uniform(Scalar(-1), Scalar(1));
-        Scalar rx = uniform(rng);
-        Scalar ry = uniform(rng);
-        Scalar rz =  uniform(rng);
-
         // calculate the magnitude of the random force
         Scalar gamma;
         if (use_lambda)
@@ -154,29 +147,61 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
             gamma = s_gammas[typ];
             }
 
-        // compute the bd force (the extra factor of 3 is because <rx^2> is 1/3 in the uniform -1,1 distribution
-        // it is not the dimensionality of the system
-        Scalar coeff = fast::sqrt(Scalar(3.0)*Scalar(2.0)*gamma*T/deltaT);
-        if (d_noiseless_t)
-            coeff = Scalar(0.0);
-        Scalar Fr_x = rx*coeff;
-        Scalar Fr_y = ry*coeff;
-        Scalar Fr_z = rz*coeff;
 
-        if (D < 3)
-            Fr_z = Scalar(0.0);
+        // compute the random force
+        RandomGenerator rng(RNGIdentifier::TwoStepBD, seed, ptag, timestep);
 
-        // update position
 
-	Scalar mu = 0.0;
-        
 	Scalar3 next_pos;
 	next_pos.x = postype.x;
 	next_pos.y = postype.y;
 	next_pos.z = postype.z;
 
+
+        Scalar rx, ry, rz, coeff;
+
         EvaluatorConstraintManifold manifold(L);
         Scalar3 normal = manifold.evalNormal(next_pos);
+	if (T > 0)
+	{
+		UniformDistribution<Scalar> uniform(Scalar(-1), Scalar(1));
+		Scalar rx = uniform(rng);
+		Scalar ry = uniform(rng);
+		Scalar rz =  uniform(rng);
+
+                // compute the bd force (the extra factor of 3 is because <rx^2> is 1/3 in the uniform -1,1 distribution
+                // it is not the dimensionality of the system
+                coeff = fast::sqrt(Scalar(3.0)*Scalar(2.0)*gamma*T/deltaT);
+                if (d_noiseless_t)
+                    coeff = Scalar(0.0);
+
+		Scalar ndotn = Scalar(1.0)/fast::sqrt(dot(normal,normal));
+		Scalar proj_x = normal.x*ndotn;
+		Scalar proj_y = normal.y*ndotn;
+		Scalar proj_z = normal.z*ndotn;
+		
+		Scalar proj_r = rx*proj_x + ry*proj_y + rz*proj_z;
+		rx = rx - proj_r*proj_x;
+		ry = ry - proj_r*proj_y;
+		rz = rz - proj_r*proj_z;
+	}
+	else
+	{
+           	rx = 0;
+           	ry = 0;
+           	rz = 0;
+           	coeff = 0;
+	}
+
+
+        Scalar Fr_x = rx*coeff;
+        Scalar Fr_y = ry*coeff;
+        Scalar Fr_z = rz*coeff;
+
+        // update position
+
+	Scalar mu = 0.0;
+        
 
         unsigned int maxiteration = 10;
         Scalar deltaT_gamma = deltaT/gamma;

@@ -168,7 +168,7 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
         Scalar Fr_z = rz*coeff;
 
         // update position
-	Scalar lambda = 0.0;
+	Scalar mu = 0.0;
         
 	Scalar3 next_pos;
 	next_pos.x = h_pos.data[j].x;
@@ -186,9 +186,9 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	do
 	{
 	    iteration++;
-	    residual.x = h_pos.data[j].x - next_pos.x + (h_net_force.data[j].x + Fr_x - lambda*normal.x) * deltaT_gamma;
-	    residual.y = h_pos.data[j].y - next_pos.y + (h_net_force.data[j].y + Fr_y - lambda*normal.y) * deltaT_gamma;
-	    residual.z = h_pos.data[j].z - next_pos.z + (h_net_force.data[j].z + Fr_z - lambda*normal.z) * deltaT_gamma;
+	    residual.x = h_pos.data[j].x - next_pos.x + (h_net_force.data[j].x + Fr_x - mu*normal.x) * deltaT_gamma;
+	    residual.y = h_pos.data[j].y - next_pos.y + (h_net_force.data[j].y + Fr_y - mu*normal.y) * deltaT_gamma;
+	    residual.z = h_pos.data[j].z - next_pos.z + (h_net_force.data[j].z + Fr_z - mu*normal.z) * deltaT_gamma;
 	    resid = m_manifold->implicit_function(next_pos);
 
             Scalar3 next_normal =  m_manifold->derivative(next_pos);
@@ -199,13 +199,13 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
             next_pos.x = next_pos.x - beta*normal.x + residual.x;   
             next_pos.y = next_pos.y - beta*normal.y + residual.y;   
             next_pos.z = next_pos.z - beta*normal.z + residual.z;
-	    lambda = lambda - beta*inv_alpha;
+	    mu = mu - beta*inv_alpha;
 	 
 	} while (maxNorm(residual,resid) > m_eta && iteration < maxiteration );
 
-	Scalar dx = (h_net_force.data[j].x + Fr_x - lambda*normal.x) * deltaT_gamma;
-	Scalar dy = (h_net_force.data[j].y + Fr_y - lambda*normal.y) * deltaT_gamma;
-	Scalar dz = (h_net_force.data[j].z + Fr_z - lambda*normal.z) * deltaT_gamma;
+	Scalar dx = (h_net_force.data[j].x + Fr_x - mu*normal.x) * deltaT_gamma;
+	Scalar dy = (h_net_force.data[j].y + Fr_y - mu*normal.y) * deltaT_gamma;
+	Scalar dz = (h_net_force.data[j].z + Fr_z - mu*normal.z) * deltaT_gamma;
 
         h_pos.data[j].x += dx;
         h_pos.data[j].y += dy;

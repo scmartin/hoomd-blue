@@ -453,9 +453,9 @@ class active(_force):
                   self.cpp_force.addManifold(manifold.cpp_manifold)
         else: 
             L = 0
-            contrain = False
+            constraint = False
             if (manifold is not None):
-                contrain = True
+                constraint = True
                 if (manifold.__class__.__name__ is "tpms_manifold"):
                      L = Lx
                 else:
@@ -464,8 +464,8 @@ class active(_force):
                      else:
                             raise RuntimeError("Active force constraint is not accepted (currently only accepts gyroid and plane)")
         
-        self.cpp_force = _md.ActiveForceComputeGPU(hoomd.context.current.system_definition, group.cpp_group, seed, f_lst, t_lst,
-                                                         orientation_link, orientation_reverse_link, rotation_diff, L,False);
+            self.cpp_force = _md.ActiveForceComputeGPU(hoomd.context.current.system_definition, group.cpp_group, seed, f_lst, t_lst,
+                                                         orientation_link, orientation_reverse_link, rotation_diff, L, constraint);
 
 
 
