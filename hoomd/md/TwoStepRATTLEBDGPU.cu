@@ -176,15 +176,15 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
                 if (d_noiseless_t)
                     coeff = Scalar(0.0);
 
-		Scalar ndotn = Scalar(1.0)/fast::sqrt(dot(normal,normal));
-		Scalar proj_x = normal.x*ndotn;
-		Scalar proj_y = normal.y*ndotn;
-		Scalar proj_z = normal.z*ndotn;
-		
-		Scalar proj_r = rx*proj_x + ry*proj_y + rz*proj_z;
-		rx = rx - proj_r*proj_x;
-		ry = ry - proj_r*proj_y;
-		rz = rz - proj_r*proj_z;
+		//Scalar ndotn = Scalar(1.0)/fast::sqrt(dot(normal,normal));
+		//Scalar proj_x = normal.x*ndotn;
+		//Scalar proj_y = normal.y*ndotn;
+		//Scalar proj_z = normal.z*ndotn;
+		//
+		//Scalar proj_r = rx*proj_x + ry*proj_y + rz*proj_z;
+		//rx = rx - proj_r*proj_x;
+		//ry = ry - proj_r*proj_y;
+		//rz = rz - proj_r*proj_z;
 	}
 	else
 	{
