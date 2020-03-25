@@ -73,5 +73,6 @@ void export_SphereManifold(pybind11::module& m)
     .def(py::init< std::shared_ptr<SystemDefinition>,Scalar, Scalar3 >())
     .def("implicit_function", &SphereManifold::implicit_function)
     .def("derivative", &SphereManifold::derivative)
+    .def("returnLx", &SphereManifold::returnLx)
     ;
     }

@@ -48,6 +48,7 @@ class PYBIND11_EXPORT EllipsoidManifold : public Manifold
         */
         Scalar3 derivative(Scalar3 point);
 
+	Scalar returnLx() {return 0;};
     protected:
         Scalar m_inva2; //! The inverse of x-axis length of the ellipsoid.
         Scalar m_invb2; //! The inverse of x-axis length of the ellipsoid.

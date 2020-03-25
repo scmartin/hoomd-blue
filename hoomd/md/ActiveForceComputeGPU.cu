@@ -263,7 +263,9 @@ __global__ void gpu_compute_active_force_rotational_diffusion_kernel(const unsig
 
    	    Scalar3 norm_scalar3 = manifold.evalNormal(current_pos);; // the normal vector to which the particles are confined.
 	    Scalar nNorm =  slow::sqrt(norm_scalar3.x*norm_scalar3.x + norm_scalar3.y*norm_scalar3.y + norm_scalar3.z*norm_scalar3.z);
-	    norm_scalar3 = norm_scalar3/nNorm;
+	    norm_scalar3.x /= nNorm;
+	    norm_scalar3.y /= nNorm;
+	    norm_scalar3.z /= nNorm;
             vec3<Scalar> norm;
             norm = vec3<Scalar> (norm_scalar3);
 

@@ -128,7 +128,13 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 
         Scalar rx, ry, rz, coeff;
 
-	Scalar3 normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x,h_pos.data[j].y,h_pos.data[j].z));
+	Scalar3 next_pos;
+	next_pos.x = h_pos.data[j].x;
+	next_pos.y = h_pos.data[j].y;
+	next_pos.z = h_pos.data[j].z;
+
+
+	Scalar3 normal = m_manifold->derivative(next_pos);
 
         if(currentTemp > 0)
 	{
@@ -170,11 +176,6 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
         // update position
 	Scalar mu = 0.0;
         
-	Scalar3 next_pos;
-	next_pos.x = h_pos.data[j].x;
-	next_pos.y = h_pos.data[j].y;
-	next_pos.z = h_pos.data[j].z;
-
 	Scalar inv_alpha = -deltaT_gamma;
 	inv_alpha = Scalar(1.0)/inv_alpha;
 
@@ -183,8 +184,8 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	unsigned int iteration = 0;
 
 
-	do
-	{
+	//do
+	//{
 	    iteration++;
 	    residual.x = h_pos.data[j].x - next_pos.x + (h_net_force.data[j].x + Fr_x - mu*normal.x) * deltaT_gamma;
 	    residual.y = h_pos.data[j].y - next_pos.y + (h_net_force.data[j].y + Fr_y - mu*normal.y) * deltaT_gamma;
@@ -199,9 +200,9 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
             next_pos.x = next_pos.x - beta*normal.x + residual.x;   
             next_pos.y = next_pos.y - beta*normal.y + residual.y;   
             next_pos.z = next_pos.z - beta*normal.z + residual.z;
-	    mu = mu - beta*inv_alpha;
+	//    mu = mu - beta*inv_alpha;
 	 
-	} while (maxNorm(residual,resid) > m_eta && iteration < maxiteration );
+	//} while (maxNorm(residual,resid) > m_eta && iteration < maxiteration );
 
 	Scalar dx = (h_net_force.data[j].x + Fr_x - mu*normal.x) * deltaT_gamma;
 	Scalar dy = (h_net_force.data[j].y + Fr_y - mu*normal.y) * deltaT_gamma;

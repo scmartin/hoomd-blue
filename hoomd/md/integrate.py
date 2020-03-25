@@ -1758,7 +1758,7 @@ class brownian_rattle(_integration_method):
         integrator = integrate.brownian(group=typeA, manifold=sphere, kT=hoomd.variant.linear_interp([(0, 4.0), (1e6, 1.0)]), seed=10, eta=0.000001)
 
     """
-    def __init__(self, group, manifold, kT, seed, dscale=False, noiseless_t=False, noiseless_r=False, eta=0.000001, Lx=0):
+    def __init__(self, group, manifold, kT, seed, dscale=False, noiseless_t=False, noiseless_r=False, eta=0.000001):
         hoomd.util.print_status_line();
 
         # initialize base class
@@ -1788,27 +1788,20 @@ class brownian_rattle(_integration_method):
                                    noiseless_r,
 				   eta);
         else:
-            #raise RuntimeError("Not supported on GPU yet");
-            L = 0
             if (manifold is not None):
-                if (manifold.__class__.__name__ is "tpms_manifold"):
-                     L = Lx
-                else:
-                     if (manifold.__class__.__name__ is "plane_manifold"):
-                            L =-1
-                     else:
-                            raise RuntimeError("Active force constraint is not accepted (currently only accepts gyroid and plane)")
-            self.cpp_method = _md.TwoStepRATTLEBDGPU(hoomd.context.current.system_definition,
+                if (manifold.__class__.__name__ is "tpms_manifold" or manifold.__class__.__name__ is "plane_manifold" ):
+                     self.cpp_method = _md.TwoStepRATTLEBDGPU(hoomd.context.current.system_definition,
                                    group.cpp_group,
-				    manifold.cpp_manifold,
+				   manifold.cpp_manifold,
                                    kT.cpp_variant,
-                                   L,
                                    seed,
                                    use_lambda,
                                    float(dscale),
                                    noiseless_t,
                                    noiseless_r,
-				    eta);
+				   eta);
+                else:
+                     raise RuntimeError("Manifold constraint is not accepted (currently only accepts gyroid and plane for GPU)")
 
         self.cpp_method.validateGroup()
 

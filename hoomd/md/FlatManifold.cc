@@ -52,6 +52,11 @@ Scalar FlatManifold::implicit_function(Scalar3 point)
 	       }
        }
 
+Scalar FlatManifold::returnLx()
+    {
+	return 0;
+    }
+
        //! Return the gradient of the constraint.
        /*! \param point The location to evaluate the gradient.
        */
@@ -75,5 +80,6 @@ void export_FlatManifold(pybind11::module& m)
     .def(py::init< std::shared_ptr<SystemDefinition>,std::string, Scalar >())
     .def("implicit_function", &FlatManifold::implicit_function)
     .def("derivative", &FlatManifold::derivative)
+    .def("returnLx", &FlatManifold::returnLx)
     ;
     }

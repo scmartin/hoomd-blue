@@ -42,6 +42,8 @@ class PYBIND11_EXPORT Manifold
         */
         virtual Scalar3 derivative(Scalar3 point) {return make_scalar3(0, 0, 0);}
 
+	virtual Scalar returnLx() {return 0;}
+
 #ifdef ENABLE_MPI
         //! Set the communicator to use
         /*! \param comm MPI communication class
@@ -52,7 +54,6 @@ class PYBIND11_EXPORT Manifold
             m_comm = comm;
             }
 #endif
-
     protected:
         const std::shared_ptr<SystemDefinition> m_sysdef; //!< The system definition this method is associated with
         const std::shared_ptr<ParticleData> m_pdata;      //!< The particle data this method is associated with

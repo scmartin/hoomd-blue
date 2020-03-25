@@ -32,7 +32,6 @@ class PYBIND11_EXPORT TwoStepRATTLEBDGPU : public TwoStepRATTLEBD
                      std::shared_ptr<ParticleGroup> group,
                      std::shared_ptr<Manifold> manifold,
                      std::shared_ptr<Variant> T,
-                     Scalar L,
                      unsigned int seed,
                      bool use_lambda,
                      Scalar lambda,
@@ -50,7 +49,6 @@ class PYBIND11_EXPORT TwoStepRATTLEBDGPU : public TwoStepRATTLEBD
 
     protected:
         unsigned int m_block_size;               //!< block size
-	Scalar m_L;
     };
 
 //! Exports the TwoStepRATTLEBDGPU class to python

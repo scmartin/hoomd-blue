@@ -81,5 +81,6 @@ void export_EllipsoidManifold(pybind11::module& m)
     .def(py::init< std::shared_ptr<SystemDefinition>,Scalar, Scalar, Scalar, Scalar3 >())
     .def("implicit_function", &EllipsoidManifold::implicit_function)
     .def("derivative", &EllipsoidManifold::derivative)
+    .def("returnLx", &EllipsoidManifold::returnLx)
     ;
     }

@@ -55,7 +55,7 @@ class EvaluatorConstraintManifold
                 {
                 // compute the vector pointing from P to V
 
-                return slow::sin(L*U.x)*slow::cos(L*U.y) + slow::sin(L*U.y)*slow::cos(L*U.z) + slow::sin(L*U.z)*slow::cos(L*U.x); 
+          	return slow::sin(L*U.x)*slow::cos(L*U.y) + slow::sin(L*U.y)*slow::cos(L*U.z) + slow::sin(L*U.z)*slow::cos(L*U.x);	
                 }
             else // else use iterative method
                 {
@@ -72,7 +72,7 @@ class EvaluatorConstraintManifold
             Scalar3 N;
             if (L>0) // if ellipsoid is actually a sphere, use easier method
 	    {
-		    N.x = L*(slow::cos(L*U.x)*slow::cos(L*U.y) - slow::sin(L*U.z)*slow::sin(L*U.x));
+          	    N.x = L*(slow::cos(L*U.x)*slow::cos(L*U.y) - slow::sin(L*U.z)*slow::sin(L*U.x));
           	    N.y = L*(slow::cos(L*U.y)*slow::cos(L*U.z) - slow::sin(L*U.x)*slow::sin(L*U.y));
           	    N.z = L*(slow::cos(L*U.z)*slow::cos(L*U.x) - slow::sin(L*U.y)*slow::sin(L*U.z)); 
 	    }else{

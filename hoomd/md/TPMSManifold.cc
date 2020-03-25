@@ -78,6 +78,11 @@ Scalar3 TPMSManifold::derivative(Scalar3 point)
        return delta;
        }
 
+Scalar TPMSManifold::returnLx()
+    {
+	return Lx;
+    }
+
 void TPMSManifold::setup()
     {
 
@@ -92,7 +97,6 @@ void TPMSManifold::setup()
     Ly = Scalar(2.0)*M_PI*m_Ny/box_length.y;
     Lz = Scalar(2.0)*M_PI*m_Nz/box_length.z;
 
-   std::cout << Lx << " " << Ly << " " << Lz << std::endl;
     }
 
 //! Exports the TPMSManifold class to python
@@ -102,5 +106,6 @@ void export_TPMSManifold(pybind11::module& m)
     .def(py::init< std::shared_ptr<SystemDefinition>, std::string, Scalar, Scalar, Scalar >())
     .def("implicit_function", &TPMSManifold::implicit_function)
     .def("derivative", &TPMSManifold::derivative)
+    .def("returnLx", &TPMSManifold::returnLx)
     ;
     }

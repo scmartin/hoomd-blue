@@ -30,14 +30,13 @@ TwoStepRATTLEBDGPU::TwoStepRATTLEBDGPU(std::shared_ptr<SystemDefinition> sysdef,
                            std::shared_ptr<ParticleGroup> group,
                        	   std::shared_ptr<Manifold> manifold,
                            std::shared_ptr<Variant> T,
-                           Scalar L,
                            unsigned int seed,
                            bool use_lambda,
                            Scalar lambda,
                            bool noiseless_t,
                            bool noiseless_r,
                            Scalar eta)
-    : TwoStepRATTLEBD(sysdef, group, manifold,T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta), m_L(L)
+    : TwoStepRATTLEBD(sysdef, group, manifold,T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta)
     {
     if (!m_exec_conf->isCUDAEnabled())
         {
@@ -86,7 +85,7 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
     args.use_lambda = m_use_lambda;
     args.lambda = m_lambda;
     args.T = m_T->getValue(timestep);
-    args.L = m_L;
+    args.L = m_manifold->returnLx();
     args.eta = m_eta;
     args.timestep = timestep;
     args.seed = m_seed;
@@ -161,7 +160,6 @@ void export_TwoStepRATTLEBDGPU(py::module& m)
                                std::shared_ptr<ParticleGroup>,
                                std::shared_ptr<Manifold>,
                                std::shared_ptr<Variant>,
-                               Scalar,
                                unsigned int,
                                bool,
                                Scalar,

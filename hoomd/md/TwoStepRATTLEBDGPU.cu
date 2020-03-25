@@ -146,6 +146,7 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
             unsigned int typ = __scalar_as_int(postype.w);
             gamma = s_gammas[typ];
             }
+        Scalar deltaT_gamma = deltaT/gamma;
 
 
         // compute the random force
@@ -165,13 +166,13 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
 	if (T > 0)
 	{
 		UniformDistribution<Scalar> uniform(Scalar(-1), Scalar(1));
-		Scalar rx = uniform(rng);
-		Scalar ry = uniform(rng);
-		Scalar rz =  uniform(rng);
+		rx = uniform(rng);
+		ry = uniform(rng);
+		rz =  uniform(rng);
 
                 // compute the bd force (the extra factor of 3 is because <rx^2> is 1/3 in the uniform -1,1 distribution
                 // it is not the dimensionality of the system
-                coeff = fast::sqrt(Scalar(3.0)*Scalar(2.0)*gamma*T/deltaT);
+                coeff = fast::sqrt(Scalar(6.0)*T/deltaT_gamma);
                 if (d_noiseless_t)
                     coeff = Scalar(0.0);
 
@@ -204,7 +205,6 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
         
 
         unsigned int maxiteration = 10;
-        Scalar deltaT_gamma = deltaT/gamma;
 	Scalar inv_alpha = -deltaT_gamma;
 	inv_alpha = Scalar(1.0)/inv_alpha;
 
@@ -213,8 +213,8 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
 	unsigned int iteration = 0;
 
 
-	do
-	{
+	//do
+	//{
 	    iteration++;
 	    residual.x = postype.x - next_pos.x + (net_force.x + Fr_x - mu*normal.x) * deltaT_gamma;
 	    residual.y = postype.y - next_pos.y + (net_force.y + Fr_y - mu*normal.y) * deltaT_gamma;
@@ -229,28 +229,28 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
             next_pos.x = next_pos.x - beta*normal.x + residual.x;   
             next_pos.y = next_pos.y - beta*normal.y + residual.y;   
             next_pos.z = next_pos.z - beta*normal.z + residual.z;
-	    mu = mu - beta*inv_alpha;
+	//    mu = mu - beta*inv_alpha;
 	 
-	} while (maxNorm(residual,resid) > eta && iteration < maxiteration );
+	//} while (maxNorm(residual,resid) > eta && iteration < maxiteration );
 
 
-        postype.x += (net_force.x + Fr_x - mu*normal.x) * deltaT / gamma;
-        postype.y += (net_force.y + Fr_y - mu*normal.y) * deltaT / gamma;
-        postype.z += (net_force.z + Fr_z - mu*normal.z) * deltaT / gamma;
+        Scalar dx = (net_force.x + Fr_x - mu*normal.x) * deltaT_gamma;
+        Scalar dy = (net_force.y + Fr_y - mu*normal.y) * deltaT_gamma;
+        Scalar dz = (net_force.z + Fr_z - mu*normal.z) * deltaT_gamma;
 
-        // particles may have been moved slightly outside the box by the above steps, wrap them back into place
+	postype.x += dx;
+	postype.y += dy;
+	postype.z += dz;
+// particles may have been moved slightly outside the box by the above steps, wrap them back into place
         box.wrap(postype, image);
 
         // draw a new random velocity for particle j
         Scalar mass = vel.w;
         Scalar sigma = fast::sqrt(T/mass);
-        NormalDistribution<Scalar> norma(sigma);
-        vel.x = norma(rng);
-        vel.y = norma(rng);
-        if (D > 2)
-            vel.z = norma(rng);
-        else
-            vel.z = 0;
+        NormalDistribution<Scalar> norm(sigma);
+        vel.x = norm(rng);
+        vel.y = norm(rng);
+        vel.z = norm(rng);
 
         // write out data
         d_pos[idx] = postype;
