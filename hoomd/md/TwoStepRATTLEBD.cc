@@ -134,7 +134,14 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	next_pos.z = h_pos.data[j].z;
 
 
-	Scalar3 normal = m_manifold->derivative(next_pos);
+	//Scalar3 normal = m_manifold->derivative(next_pos);
+
+	Scalar Lx = m_manifold->returnLx();	
+
+	Scalar3 normal;
+        normal.x = Lx*(slow::cos(Lx*next_pos.x)*slow::cos(Lx*next_pos.y) - slow::sin(Lx*next_pos.z)*slow::sin(Lx*next_pos.x));
+        normal.y = Lx*(slow::cos(Lx*next_pos.y)*slow::cos(Lx*next_pos.z) - slow::sin(Lx*next_pos.x)*slow::sin(Lx*next_pos.y));	
+        normal.z = Lx*(slow::cos(Lx*next_pos.z)*slow::cos(Lx*next_pos.x) - slow::sin(Lx*next_pos.y)*slow::sin(Lx*next_pos.z));	
 
         if(currentTemp > 0)
 	{
@@ -151,15 +158,15 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 		if (m_noiseless_t)
 		    coeff = Scalar(0.0);
 
-		//Scalar ndotn = Scalar(1.0)/fast::sqrt(dot(normal,normal));
-		//Scalar proj_x = normal.x*ndotn;
-		//Scalar proj_y = normal.y*ndotn;
-		//Scalar proj_z = normal.z*ndotn;
-		//
-		//Scalar proj_r = rx*proj_x + ry*proj_y + rz*proj_z;
-		//rx = rx - proj_r*proj_x;
-		//ry = ry - proj_r*proj_y;
-		//rz = rz - proj_r*proj_z;
+		Scalar ndotn = Scalar(1.0)/fast::sqrt(dot(normal,normal));
+		Scalar proj_x = normal.x*ndotn;
+		Scalar proj_y = normal.y*ndotn;
+		Scalar proj_z = normal.z*ndotn;
+		
+		Scalar proj_r = rx*proj_x + ry*proj_y + rz*proj_z;
+		rx = rx - proj_r*proj_x;
+		ry = ry - proj_r*proj_y;
+		rz = rz - proj_r*proj_z;
 	}
 	else
 	{

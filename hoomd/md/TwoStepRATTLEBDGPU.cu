@@ -161,8 +161,13 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
 
         Scalar rx, ry, rz, coeff;
 
+	Scalar3 normal;
+        normal.x = L*(slow::cos(L*next_pos.x)*slow::cos(L*next_pos.y) - slow::sin(L*next_pos.z)*slow::sin(L*next_pos.x));
+        normal.y = L*(slow::cos(L*next_pos.y)*slow::cos(L*next_pos.z) - slow::sin(L*next_pos.x)*slow::sin(L*next_pos.y));	
+        normal.z = L*(slow::cos(L*next_pos.z)*slow::cos(L*next_pos.x) - slow::sin(L*next_pos.y)*slow::sin(L*next_pos.z));	
+
         EvaluatorConstraintManifold manifold(L);
-        Scalar3 normal = manifold.evalNormal(next_pos);
+        //Scalar3 normal = manifold.evalNormal(next_pos);
 	if (T > 0)
 	{
 		UniformDistribution<Scalar> uniform(Scalar(-1), Scalar(1));
@@ -176,15 +181,15 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
                 if (d_noiseless_t)
                     coeff = Scalar(0.0);
 
-		//Scalar ndotn = Scalar(1.0)/fast::sqrt(dot(normal,normal));
-		//Scalar proj_x = normal.x*ndotn;
-		//Scalar proj_y = normal.y*ndotn;
-		//Scalar proj_z = normal.z*ndotn;
-		//
-		//Scalar proj_r = rx*proj_x + ry*proj_y + rz*proj_z;
-		//rx = rx - proj_r*proj_x;
-		//ry = ry - proj_r*proj_y;
-		//rz = rz - proj_r*proj_z;
+		Scalar ndotn = Scalar(1.0)/fast::sqrt(dot(normal,normal));
+		Scalar proj_x = normal.x*ndotn;
+		Scalar proj_y = normal.y*ndotn;
+		Scalar proj_z = normal.z*ndotn;
+		
+		Scalar proj_r = rx*proj_x + ry*proj_y + rz*proj_z;
+		rx = rx - proj_r*proj_x;
+		ry = ry - proj_r*proj_y;
+		rz = rz - proj_r*proj_z;
 	}
 	else
 	{
