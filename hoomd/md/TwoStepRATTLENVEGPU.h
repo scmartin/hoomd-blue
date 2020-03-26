@@ -30,7 +30,7 @@ class PYBIND11_EXPORT TwoStepRATTLENVEGPU : public TwoStepRATTLENVE
     {
     public:
         //! Constructs the integration method and associates it with the system
-        TwoStepRATTLENVEGPU(std::shared_ptr<SystemDefinition> sysdef, std::shared_ptr<ParticleGroup> group,std::shared_ptr<Manifold> manifold, Scalar L);
+        TwoStepRATTLENVEGPU(std::shared_ptr<SystemDefinition> sysdef, std::shared_ptr<ParticleGroup> group,std::shared_ptr<Manifold> manifold);
         virtual ~TwoStepRATTLENVEGPU() {};
 
         //! Performs the first step of the integration
@@ -61,8 +61,6 @@ class PYBIND11_EXPORT TwoStepRATTLENVEGPU : public TwoStepRATTLENVE
         std::unique_ptr<Autotuner> m_tuner_two; //!< Autotuner for block size (step two kernel)
         std::unique_ptr<Autotuner> m_tuner_angular_one; //!< Autotuner for block size (angular step one kernel)
         std::unique_ptr<Autotuner> m_tuner_angular_two; //!< Autotuner for block size (angular step two kernel)
-    protected:
-	Scalar m_L;
     };
 
 //! Exports the TwoStepRATTLENVEGPU class to python

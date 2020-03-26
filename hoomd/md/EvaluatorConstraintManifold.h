@@ -81,12 +81,6 @@ class EvaluatorConstraintManifold
 		    N.z = 1;
 	    }
 
-            //Scalar nNorm;
-            //nNorm = slow::sqrt(N.x*N.x + N.y*N.y + N.z*N.z);
-            //N.x /= nNorm;
-            //N.y /= nNorm;
-            //N.z /= nNorm;
-
             return N;
             }
 

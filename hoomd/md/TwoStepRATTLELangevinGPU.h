@@ -33,7 +33,6 @@ class PYBIND11_EXPORT TwoStepRATTLELangevinGPU : public TwoStepRATTLELangevin
                            std::shared_ptr<ParticleGroup> group,
                      	   std::shared_ptr<Manifold> manifold,
                            std::shared_ptr<Variant> T,
-                           Scalar L,
                            unsigned int seed,
                            bool use_lambda,
                            Scalar lambda,
@@ -70,8 +69,6 @@ class PYBIND11_EXPORT TwoStepRATTLELangevinGPU : public TwoStepRATTLELangevin
 
         std::unique_ptr<Autotuner> m_tuner_one; //!< Autotuner for block size (step one kernel)
         std::unique_ptr<Autotuner> m_tuner_angular_one; //!< Autotuner for block size (angular step one kernel)
-    protected:
-	Scalar m_L;
     };
 
 //! Exports the TwoStepLangevinGPU class to python

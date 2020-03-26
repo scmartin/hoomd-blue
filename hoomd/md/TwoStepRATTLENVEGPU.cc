@@ -21,9 +21,8 @@ using namespace std;
 */
 TwoStepRATTLENVEGPU::TwoStepRATTLENVEGPU(std::shared_ptr<SystemDefinition> sysdef,
                        std::shared_ptr<ParticleGroup> group,
-                       std::shared_ptr<Manifold> manifold,
-		       Scalar L)
-    : TwoStepRATTLENVE(sysdef, group, manifold), m_L(L)
+                       std::shared_ptr<Manifold> manifold)
+    : TwoStepRATTLENVE(sysdef, group, manifold)
     {
     // only one GPU is supported
     if (!m_exec_conf->isCUDAEnabled())
@@ -62,6 +61,8 @@ void TwoStepRATTLENVEGPU::integrateStepOne(unsigned int timestep)
     BoxDim box = m_pdata->getBox();
     ArrayHandle< unsigned int > d_index_array(m_group->getIndexArray(), access_location::device, access_mode::read);
 
+    EvaluatorConstraintManifold manifoldG(m_manifold->returnLx());
+
     // perform the update on the GPU
     m_exec_conf->beginMultiGPU();
     m_tuner_one->begin();
@@ -72,7 +73,7 @@ void TwoStepRATTLENVEGPU::integrateStepOne(unsigned int timestep)
                      d_index_array.data,
                      m_group->getGPUPartition(),
                      box,
-                     m_L,
+                     manifoldG,
                      m_eta,
                      m_deltaT,
                      m_limit,
@@ -137,6 +138,8 @@ void TwoStepRATTLENVEGPU::integrateStepTwo(unsigned int timestep)
     ArrayHandle<Scalar4> d_net_force(net_force, access_location::device, access_mode::read);
     ArrayHandle< unsigned int > d_index_array(m_group->getIndexArray(), access_location::device, access_mode::read);
 
+    EvaluatorConstraintManifold manifoldG(m_manifold->returnLx());
+
     // perform the update on the GPU
     m_exec_conf->beginMultiGPU();
     m_tuner_two->begin();
@@ -147,7 +150,7 @@ void TwoStepRATTLENVEGPU::integrateStepTwo(unsigned int timestep)
                      d_index_array.data,
                      m_group->getGPUPartition(),
                      d_net_force.data,
-                     m_L,
+                     manifoldG,
                      m_eta,
                      m_deltaT,
                      m_limit,
@@ -197,6 +200,6 @@ void TwoStepRATTLENVEGPU::integrateStepTwo(unsigned int timestep)
 void export_TwoStepRATTLENVEGPU(py::module& m)
     {
     py::class_<TwoStepRATTLENVEGPU, std::shared_ptr<TwoStepRATTLENVEGPU> >(m, "TwoStepRATTLENVEGPU", py::base<TwoStepRATTLENVE>())
-    .def(py::init< std::shared_ptr<SystemDefinition>, std::shared_ptr<ParticleGroup>, std::shared_ptr<Manifold> , Scalar>())
+    .def(py::init< std::shared_ptr<SystemDefinition>, std::shared_ptr<ParticleGroup>, std::shared_ptr<Manifold> >())
         ;
     }

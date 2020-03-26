@@ -31,7 +31,6 @@ TwoStepRATTLELangevinGPU::TwoStepRATTLELangevinGPU(std::shared_ptr<SystemDefinit
                                        std::shared_ptr<ParticleGroup> group,
                        		       std::shared_ptr<Manifold> manifold,
                                        std::shared_ptr<Variant> T,
-                                       Scalar L,
                                        unsigned int seed,
                                        bool use_lambda,
                                        Scalar lambda,
@@ -39,7 +38,7 @@ TwoStepRATTLELangevinGPU::TwoStepRATTLELangevinGPU(std::shared_ptr<SystemDefinit
                                        bool noiseless_r,
                            	       Scalar eta,
                                        const std::string& suffix)
-    : TwoStepRATTLELangevin(sysdef, group, manifold, T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta, suffix), m_L(L)
+    : TwoStepRATTLELangevin(sysdef, group, manifold, T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta, suffix)
     {
     if (!m_exec_conf->isCUDAEnabled())
         {
@@ -84,6 +83,8 @@ void TwoStepRATTLELangevinGPU::integrateStepOne(unsigned int timestep)
     ArrayHandle<Scalar3> d_accel(m_pdata->getAccelerations(), access_location::device, access_mode::readwrite);
     ArrayHandle<int3> d_image(m_pdata->getImages(), access_location::device, access_mode::readwrite);
 
+    EvaluatorConstraintManifold manifoldG(m_manifold->returnLx());
+
     m_exec_conf->beginMultiGPU();
     m_tuner_one->begin();
     // perform the update on the GPU
@@ -94,7 +95,7 @@ void TwoStepRATTLELangevinGPU::integrateStepOne(unsigned int timestep)
                      d_index_array.data,
                      m_group->getGPUPartition(),
                      box,
-                     m_L,
+                     manifoldG,
                      m_eta,
                      m_deltaT,
                      false,
@@ -178,7 +179,6 @@ void TwoStepRATTLELangevinGPU::integrateStepTwo(unsigned int timestep)
         args.use_lambda = m_use_lambda;
         args.lambda = m_lambda;
         args.T = m_T->getValue(timestep);
-        args.L = m_L;
         args.eta = m_eta;
         args.timestep = timestep;
         args.seed = m_seed;
@@ -190,6 +190,8 @@ void TwoStepRATTLELangevinGPU::integrateStepTwo(unsigned int timestep)
         args.noiseless_r = m_noiseless_r;
         args.tally = m_tally;
 
+        EvaluatorConstraintManifold manifoldG(m_manifold->returnLx());
+
         gpu_rattle_langevin_step_two(d_pos.data,
                               d_vel.data,
                               d_accel.data,
@@ -199,6 +201,7 @@ void TwoStepRATTLELangevinGPU::integrateStepTwo(unsigned int timestep)
                               group_size,
                               d_net_force.data,
                               args,
+                              manifoldG,
                               m_deltaT,
                               D);
 
@@ -261,7 +264,6 @@ void export_TwoStepRATTLELangevinGPU(py::module& m)
                                std::shared_ptr<ParticleGroup>,
                                std::shared_ptr<Manifold>,
                                std::shared_ptr<Variant>,
-                               Scalar,
                                unsigned int,
                                bool,
                                Scalar,

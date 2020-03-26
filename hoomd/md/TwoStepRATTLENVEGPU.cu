@@ -5,7 +5,6 @@
 // Maintainer: joaander
 
 #include "TwoStepRATTLENVEGPU.cuh"
-#include "EvaluatorConstraintManifold.h"
 #include "hoomd/VectorMath.h"
 
 #include <assert.h>
@@ -54,7 +53,7 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
                              const unsigned int nwork,
                              const unsigned int offset,
                              BoxDim box,
-                             Scalar L,
+			     EvaluatorConstraintManifold manifold,
                              Scalar eta,
                              Scalar deltaT,
                              bool limit,
@@ -67,7 +66,6 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
     if (work_idx < nwork)
         {
 
-        EvaluatorConstraintManifold manifold(L);
         const unsigned int group_idx = work_idx + offset;
         unsigned int idx = d_group_members[group_idx];
         unsigned int maxiteration = 10;
@@ -173,7 +171,7 @@ cudaError_t gpu_rattle_nve_step_one(Scalar4 *d_pos,
                              unsigned int *d_group_members,
                              const GPUPartition& gpu_partition,
                              const BoxDim& box,
-                             Scalar L,
+			     EvaluatorConstraintManifold manifold,
                              Scalar eta,
                              Scalar deltaT,
                              bool limit,
@@ -203,7 +201,7 @@ cudaError_t gpu_rattle_nve_step_one(Scalar4 *d_pos,
         dim3 threads(run_block_size, 1, 1);
 
         // run the kernel
-        gpu_rattle_nve_step_one_kernel<<< grid, threads >>>(d_pos, d_vel, d_accel, d_image, d_group_members, nwork, range.first, box, L, eta, deltaT, limit, limit_val, zero_force);
+        gpu_rattle_nve_step_one_kernel<<< grid, threads >>>(d_pos, d_vel, d_accel, d_image, d_group_members, nwork, range.first, box, manifold, eta, deltaT, limit, limit_val, zero_force);
         }
 
     return cudaSuccess;
@@ -403,7 +401,7 @@ void gpu_rattle_nve_step_two_kernel(
                             const unsigned int nwork,
                             const unsigned int offset,
                             Scalar4 *d_net_force,
-                            Scalar L,
+			    EvaluatorConstraintManifold manifold,
                             Scalar eta,
                             Scalar deltaT,
                             bool limit,
@@ -450,7 +448,6 @@ void gpu_rattle_nve_step_two_kernel(
 	Scalar mass = vel.w;
 	Scalar inv_mass = Scalar(1.0)/mass;
    
-        EvaluatorConstraintManifold manifold(L);
         Scalar3 normal = manifold.evalNormal(pos);
    
         Scalar3 next_vel; 
@@ -527,7 +524,7 @@ cudaError_t gpu_rattle_nve_step_two(Scalar4 *d_pos,
                              unsigned int *d_group_members,
                              const GPUPartition& gpu_partition,
                              Scalar4 *d_net_force,
-                             Scalar L,
+			     EvaluatorConstraintManifold manifold,
                              Scalar eta,
                              Scalar deltaT,
                              bool limit,
@@ -564,7 +561,7 @@ cudaError_t gpu_rattle_nve_step_two(Scalar4 *d_pos,
                                                      nwork,
                                                      range.first,
                                                      d_net_force,
-                                                     L,
+                                                     manifold,
                                                      eta,
                                                      deltaT,
                                                      limit,

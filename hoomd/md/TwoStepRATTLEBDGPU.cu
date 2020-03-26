@@ -7,7 +7,6 @@
 #include "TwoStepRATTLEBDGPU.cuh"
 #include "hoomd/VectorMath.h"
 #include "hoomd/HOOMDMath.h"
-#include "EvaluatorConstraintManifold.h"
 
 #include "hoomd/RandomNumbers.h"
 #include "hoomd/RNGIdentifiers.h"
@@ -82,8 +81,8 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
                                   const unsigned int timestep,
                                   const unsigned int seed,
                                   const Scalar T,
-                                  const Scalar L,
                                   const Scalar eta,
+				  EvaluatorConstraintManifold manifold,
                                   const bool aniso,
                                   const Scalar deltaT,
                                   unsigned int D,
@@ -153,43 +152,20 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
         RandomGenerator rng(RNGIdentifier::TwoStepBD, seed, ptag, timestep);
 
 
-	Scalar3 next_pos;
-	next_pos.x = postype.x;
-	next_pos.y = postype.y;
-	next_pos.z = postype.z;
-
-
         Scalar rx, ry, rz, coeff;
 
-	Scalar3 normal;
-        normal.x = L*(slow::cos(L*next_pos.x)*slow::cos(L*next_pos.y) - slow::sin(L*next_pos.z)*slow::sin(L*next_pos.x));
-        normal.y = L*(slow::cos(L*next_pos.y)*slow::cos(L*next_pos.z) - slow::sin(L*next_pos.x)*slow::sin(L*next_pos.y));	
-        normal.z = L*(slow::cos(L*next_pos.z)*slow::cos(L*next_pos.x) - slow::sin(L*next_pos.y)*slow::sin(L*next_pos.z));	
-
-        EvaluatorConstraintManifold manifold(L);
-        //Scalar3 normal = manifold.evalNormal(next_pos);
 	if (T > 0)
 	{
 		UniformDistribution<Scalar> uniform(Scalar(-1), Scalar(1));
 		rx = uniform(rng);
 		ry = uniform(rng);
-		rz =  uniform(rng);
-
+		rz = uniform(rng);
+	
                 // compute the bd force (the extra factor of 3 is because <rx^2> is 1/3 in the uniform -1,1 distribution
                 // it is not the dimensionality of the system
                 coeff = fast::sqrt(Scalar(6.0)*T/deltaT_gamma);
                 if (d_noiseless_t)
                     coeff = Scalar(0.0);
-
-		Scalar ndotn = Scalar(1.0)/fast::sqrt(dot(normal,normal));
-		Scalar proj_x = normal.x*ndotn;
-		Scalar proj_y = normal.y*ndotn;
-		Scalar proj_z = normal.z*ndotn;
-		
-		Scalar proj_r = rx*proj_x + ry*proj_y + rz*proj_z;
-		rx = rx - proj_r*proj_x;
-		ry = ry - proj_r*proj_y;
-		rz = rz - proj_r*proj_z;
 	}
 	else
 	{
@@ -206,20 +182,24 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
 
         // update position
 
-	Scalar mu = 0.0;
+	Scalar mu = 0;
         
+	Scalar3 next_pos;
+	next_pos.x = postype.x;
+	next_pos.y = postype.y;
+	next_pos.z = postype.z;
 
         unsigned int maxiteration = 10;
 	Scalar inv_alpha = -deltaT_gamma;
 	inv_alpha = Scalar(1.0)/inv_alpha;
+        Scalar3 normal = manifold.evalNormal(next_pos);
 
 	Scalar3 residual;
 	Scalar resid;
 	unsigned int iteration = 0;
 
-
-	//do
-	//{
+	do
+	{
 	    iteration++;
 	    residual.x = postype.x - next_pos.x + (net_force.x + Fr_x - mu*normal.x) * deltaT_gamma;
 	    residual.y = postype.y - next_pos.y + (net_force.y + Fr_y - mu*normal.y) * deltaT_gamma;
@@ -234,9 +214,9 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
             next_pos.x = next_pos.x - beta*normal.x + residual.x;   
             next_pos.y = next_pos.y - beta*normal.y + residual.y;   
             next_pos.z = next_pos.z - beta*normal.z + residual.z;
-	//    mu = mu - beta*inv_alpha;
+	    mu = mu - beta*inv_alpha;
 	 
-	//} while (maxNorm(residual,resid) > eta && iteration < maxiteration );
+	} while (maxNorm(residual,resid) > eta && iteration < maxiteration );
 
 
         Scalar dx = (net_force.x + Fr_x - mu*normal.x) * deltaT_gamma;
@@ -370,6 +350,7 @@ cudaError_t gpu_rattle_brownian_step_one(Scalar4 *d_pos,
                                   const Scalar3 *d_inertia,
                                   Scalar4 *d_angmom,
                                   const rattle_langevin_step_two_args& rattle_langevin_args,
+				  EvaluatorConstraintManifold manifold,
                                   const bool aniso,
                                   const Scalar deltaT,
                                   const unsigned int D,
@@ -414,8 +395,8 @@ cudaError_t gpu_rattle_brownian_step_one(Scalar4 *d_pos,
                                      rattle_langevin_args.timestep,
                                      rattle_langevin_args.seed,
                                      rattle_langevin_args.T,
-                                     rattle_langevin_args.L,
                                      rattle_langevin_args.eta,
+				     manifold,
                                      aniso,
                                      deltaT,
                                      D,

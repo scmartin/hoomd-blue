@@ -10,6 +10,7 @@
 
 #include "hoomd/ParticleData.cuh"
 #include "hoomd/HOOMDMath.h"
+#include "EvaluatorConstraintManifold.h"
 
 #ifndef __TWO_STEP_RATTLE_LANGEVIN_GPU_CUH__
 #define __TWO_STEP_RATTLE_LANGEVIN_GPU_CUH__
@@ -22,7 +23,6 @@ struct rattle_langevin_step_two_args
     bool use_lambda;          //!< Set to true to scale diameters by lambda to get gamma
     Scalar lambda;            //!< Scale factor to convert diameter to lambda
     Scalar T;                 //!< Current temperature
-    Scalar L;                 
     Scalar eta;                 
     unsigned int timestep;    //!< Current timestep
     unsigned int seed;        //!< User chosen random number seed
@@ -45,6 +45,7 @@ cudaError_t gpu_rattle_langevin_step_two(const Scalar4 *d_pos,
                                   unsigned int group_size,
                                   Scalar4 *d_net_force,
                                   const rattle_langevin_step_two_args& rattle_langevin_args,
+				  EvaluatorConstraintManifold manifold,
                                   Scalar deltaT,
                                   unsigned int D);
 

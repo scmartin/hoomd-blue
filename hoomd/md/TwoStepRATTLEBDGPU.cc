@@ -79,13 +79,13 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
     ArrayHandle<Scalar3> d_inertia(m_pdata->getMomentsOfInertiaArray(), access_location::device, access_mode::read);
     ArrayHandle<Scalar4> d_angmom(m_pdata->getAngularMomentumArray(), access_location::device, access_mode::readwrite);
 
+    
     rattle_langevin_step_two_args args;
     args.d_gamma = d_gamma.data;
     args.n_types = m_gamma.getNumElements();
     args.use_lambda = m_use_lambda;
     args.lambda = m_lambda;
     args.T = m_T->getValue(timestep);
-    args.L = m_manifold->returnLx();
     args.eta = m_eta;
     args.timestep = timestep;
     args.seed = m_seed;
@@ -94,6 +94,8 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
     args.block_size = m_block_size;
     args.num_blocks = 0; // handled in driver function
     args.tally = false;
+
+    EvaluatorConstraintManifold manifoldG(m_manifold->returnLx());
 
     bool aniso = m_aniso;
 
@@ -128,6 +130,7 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
                           d_inertia.data,
                           d_angmom.data,
                           args,
+                          manifoldG,
                           aniso,
                           m_deltaT,
                           D,

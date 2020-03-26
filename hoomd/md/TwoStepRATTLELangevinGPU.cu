@@ -5,7 +5,6 @@
 // Maintainer: joaander
 
 #include "TwoStepRATTLELangevinGPU.cuh"
-#include "EvaluatorConstraintManifold.h"
 
 #include "hoomd/RandomNumbers.h"
 #include "hoomd/RNGIdentifiers.h"
@@ -67,9 +66,9 @@ __global__ void gpu_rattle_langevin_step_two_kernel(const Scalar4 *d_pos,
                                  unsigned int timestep,
                                  unsigned int seed,
                                  Scalar T,
-                                 Scalar L,
                                  Scalar eta,
                                  bool noiseless_t,
+				 EvaluatorConstraintManifold manifold,
                                  Scalar deltaT,
                                  unsigned int D,
                                  bool tally,
@@ -130,7 +129,6 @@ __global__ void gpu_rattle_langevin_step_two_kernel(const Scalar4 *d_pos,
         //Initialize the Random Number Generator and generate the 3 random numbers
         RandomGenerator rng(RNGIdentifier::TwoStepLangevin, seed, ptag, timestep);
 
-        EvaluatorConstraintManifold manifold(L);
         Scalar3 normal = manifold.evalNormal(pos);
 	Scalar ndotn = dot(normal,normal);
 
@@ -336,7 +334,6 @@ __global__ void gpu_rattle_langevin_angular_step_two_kernel(
                              unsigned int timestep,
                              unsigned int seed,
                              Scalar T,
-                             Scalar L,
                              Scalar eta,
                              bool noiseless_r,
                              Scalar deltaT,
@@ -497,7 +494,6 @@ cudaError_t gpu_rattle_langevin_angular_step_two(const Scalar4 *d_pos,
                                         rattle_langevin_args.timestep,
                                         rattle_langevin_args.seed,
                                         rattle_langevin_args.T,
-                                        rattle_langevin_args.L,
                                         rattle_langevin_args.eta,
                                         rattle_langevin_args.noiseless_r,
                                         deltaT,
@@ -532,6 +528,7 @@ cudaError_t gpu_rattle_langevin_step_two(const Scalar4 *d_pos,
                                   unsigned int group_size,
                                   Scalar4 *d_net_force,
                                   const rattle_langevin_step_two_args& rattle_langevin_args,
+				  EvaluatorConstraintManifold manifold,
                                   Scalar deltaT,
                                   unsigned int D)
     {
@@ -562,9 +559,9 @@ cudaError_t gpu_rattle_langevin_step_two(const Scalar4 *d_pos,
                                  rattle_langevin_args.timestep,
                                  rattle_langevin_args.seed,
                                  rattle_langevin_args.T,
-                                 rattle_langevin_args.L,
                                  rattle_langevin_args.eta,
                                  rattle_langevin_args.noiseless_t,
+				 manifold,
                                  deltaT,
                                  D,
                                  rattle_langevin_args.tally,

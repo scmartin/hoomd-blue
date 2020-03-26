@@ -10,6 +10,7 @@
 
 #include "hoomd/ParticleData.cuh"
 #include "TwoStepRATTLELangevinGPU.cuh"
+#include "EvaluatorConstraintManifold.h"
 #include "hoomd/HOOMDMath.h"
 #include "hoomd/GPUPartition.cuh"
 
@@ -32,6 +33,7 @@ cudaError_t gpu_rattle_brownian_step_one(Scalar4 *d_pos,
                                   const Scalar3 *d_inertia,
                                   Scalar4 *d_angmom,
                                   const rattle_langevin_step_two_args& rattle_langevin_args,
+				  EvaluatorConstraintManifold manifold,
                                   const bool aniso,
                                   const Scalar deltaT,
                                   const unsigned int D,
