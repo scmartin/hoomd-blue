@@ -50,7 +50,8 @@ Scalar TPMSManifold::implicit_function(Scalar3 point)
             if(diamond)
                 return slow::cos(Lx*point.x)*slow::cos(Ly*point.y)*slow::cos(Lz*point.z) - slow::sin(Lx*point.x)*slow::sin(Ly*point.y)*slow::sin(Lz*point.z);
             else
-                return  slow::cos(Lx*point.x) + slow::cos(Ly*point.y) + slow::cos(Lz*point.z);
+                //return  slow::cos(Lx*point.x) + slow::cos(Ly*point.y) + slow::cos(Lz*point.z);
+                return  slow::cos(Lx*point.x) + slow::cos(Ly*point.y) + point.z;
        }
        }
 
@@ -72,7 +73,8 @@ Scalar3 TPMSManifold::derivative(Scalar3 point)
               }else{
                  delta.x = -Lx*slow::sin(Lx*point.x);
                  delta.y = -Ly*slow::sin(Ly*point.y);
-                 delta.z = -Lz*slow::sin(Lz*point.z);
+                 //delta.z = -Lz*slow::sin(Lz*point.z);
+                 delta.z = 1;
               }
        }	
        return delta;

@@ -8,6 +8,7 @@
 #include "hoomd/VectorMath.h"
 #include "QuaternionMath.h"
 #include "hoomd/HOOMDMath.h"
+//#include "EvaluatorConstraintManifold.h"
 
 #include "hoomd/RandomNumbers.h"
 #include "hoomd/RNGIdentifiers.h"
@@ -104,6 +105,9 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 
     unsigned int maxiteration = 10;
 
+    //Scalar Lx = m_manifold->returnLx();	
+    //EvaluatorConstraintManifold manifoldG(Lx); //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     // perform the first half step
     // r(t+deltaT) = r(t) + (Fc(t) + Fr)*deltaT/gamma
     // iterative: r(t+deltaT) = r(t+deltaT) - J^(-1)*residual
@@ -128,21 +132,6 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 
         Scalar rx, ry, rz, coeff;
 
-	Scalar3 next_pos;
-	next_pos.x = h_pos.data[j].x;
-	next_pos.y = h_pos.data[j].y;
-	next_pos.z = h_pos.data[j].z;
-
-
-	//Scalar3 normal = m_manifold->derivative(next_pos);
-
-	Scalar Lx = m_manifold->returnLx();	
-
-	Scalar3 normal;
-        normal.x = Lx*(slow::cos(Lx*next_pos.x)*slow::cos(Lx*next_pos.y) - slow::sin(Lx*next_pos.z)*slow::sin(Lx*next_pos.x));
-        normal.y = Lx*(slow::cos(Lx*next_pos.y)*slow::cos(Lx*next_pos.z) - slow::sin(Lx*next_pos.x)*slow::sin(Lx*next_pos.y));	
-        normal.z = Lx*(slow::cos(Lx*next_pos.z)*slow::cos(Lx*next_pos.x) - slow::sin(Lx*next_pos.y)*slow::sin(Lx*next_pos.z));	
-
         if(currentTemp > 0)
 	{
 		// compute the random force
@@ -151,22 +140,11 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 		ry = uniform(rng);
 		rz = uniform(rng);
 
-
 		// compute the bd force (the extra factor of 3 is because <rx^2> is 1/3 in the uniform -1,1 distribution
 		// it is not the dimensionality of the system
 		coeff = fast::sqrt(Scalar(6.0)*currentTemp/deltaT_gamma);
 		if (m_noiseless_t)
 		    coeff = Scalar(0.0);
-
-		Scalar ndotn = Scalar(1.0)/fast::sqrt(dot(normal,normal));
-		Scalar proj_x = normal.x*ndotn;
-		Scalar proj_y = normal.y*ndotn;
-		Scalar proj_z = normal.z*ndotn;
-		
-		Scalar proj_r = rx*proj_x + ry*proj_y + rz*proj_z;
-		rx = rx - proj_r*proj_x;
-		ry = ry - proj_r*proj_y;
-		rz = rz - proj_r*proj_z;
 	}
 	else
 	{
@@ -186,20 +164,30 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	Scalar inv_alpha = -deltaT_gamma;
 	inv_alpha = Scalar(1.0)/inv_alpha;
 
+	Scalar3 next_pos;
+	next_pos.x = h_pos.data[j].x;
+	next_pos.y = h_pos.data[j].y;
+	next_pos.z = h_pos.data[j].z;
+
+	Scalar3 normal = m_manifold->derivative(next_pos);
+        //Scalar3 normal = manifoldG.evalNormal(next_pos);
+
 	Scalar3 residual;
 	Scalar resid;
 	unsigned int iteration = 0;
 
 
-	//do
-	//{
+	do
+	{
 	    iteration++;
 	    residual.x = h_pos.data[j].x - next_pos.x + (h_net_force.data[j].x + Fr_x - mu*normal.x) * deltaT_gamma;
 	    residual.y = h_pos.data[j].y - next_pos.y + (h_net_force.data[j].y + Fr_y - mu*normal.y) * deltaT_gamma;
 	    residual.z = h_pos.data[j].z - next_pos.z + (h_net_force.data[j].z + Fr_z - mu*normal.z) * deltaT_gamma;
 	    resid = m_manifold->implicit_function(next_pos);
+	    //resid = manifoldG.implicit_function(next_pos);
 
             Scalar3 next_normal =  m_manifold->derivative(next_pos);
+            //Scalar3 next_normal =  manifoldG.evalNormal(next_pos);
 	    Scalar nndotr = dot(next_normal,residual);
 	    Scalar nndotn = dot(next_normal,normal);
 	    Scalar beta = (resid + nndotr)/nndotn;
@@ -207,9 +195,9 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
             next_pos.x = next_pos.x - beta*normal.x + residual.x;   
             next_pos.y = next_pos.y - beta*normal.y + residual.y;   
             next_pos.z = next_pos.z - beta*normal.z + residual.z;
-	//    mu = mu - beta*inv_alpha;
-	 
-	//} while (maxNorm(residual,resid) > m_eta && iteration < maxiteration );
+	    mu = mu - beta*inv_alpha;
+	
+	} while (maxNorm(residual,resid) > m_eta && iteration < maxiteration );
 
 	Scalar dx = (h_net_force.data[j].x + Fr_x - mu*normal.x) * deltaT_gamma;
 	Scalar dy = (h_net_force.data[j].y + Fr_y - mu*normal.y) * deltaT_gamma;
@@ -229,16 +217,6 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
         h_vel.data[j].x = norm(rng);
         h_vel.data[j].y = norm(rng);
         h_vel.data[j].z = norm(rng);
-
-	//normal = m_manifold->derivative(make_scalar3(h_pos.data[j].x, h_pos.data[j].y, h_pos.data[j].z));
-	//Scalar normal_norm = Scalar(1.0)/fast::sqrt(dot(normal,normal));
-	//normal *= normal_norm;
-	//normal_norm = dot(make_scalar3(h_vel.data[j].x, h_vel.data[j].y, h_vel.data[j].z),normal);
-    
-        //h_vel.data[j].x -= normal_norm*normal.x;
-        //h_vel.data[j].y -= normal_norm*normal.y;
-        //h_vel.data[j].z -= normal_norm*normal.z;
-	
 
         // rotational random force and orientation quaternion updates
         if (m_aniso)
