@@ -5,6 +5,7 @@
 // Maintainer: joaander
 
 #include "ActiveForceCompute.h"
+#include "EvaluatorConstraintManifold.h"
 
 /*! \file ActiveForceComputeGPU.h
     \brief Declares a class for computing active forces on the GPU
@@ -29,13 +30,9 @@ class PYBIND11_EXPORT ActiveForceComputeGPU : public ActiveForceCompute
         ActiveForceComputeGPU(std::shared_ptr<SystemDefinition> sysdef,
                              std::shared_ptr<ParticleGroup> group,
                              int seed, pybind11::list f_lst, pybind11::list t_lst,
-                             bool orientation_link, bool orientation_reverse_link, Scalar rotation_diff,
-			     Scalar L, bool constraint);
+                             bool orientation_link, bool orientation_reverse_link, Scalar rotation_diff);
 
-        //void addManifold(std::shared_ptr<Manifold> manifold){
-	//	m_manifold = manifold;
-	//	m_constraint = true;
-	//};
+        void addManifold(std::shared_ptr<Manifold> manifold);
 
     protected:
         unsigned int m_block_size;  //!< block size to execute on the GPU
@@ -50,7 +47,7 @@ class PYBIND11_EXPORT ActiveForceComputeGPU : public ActiveForceCompute
         virtual void setConstraint();
 
         GPUArray<unsigned int>  m_groupTags; //! Stores list converting group index to global tag
-        Scalar m_L;
+	EvaluatorConstraintManifold m_manifoldGPU;
     };
 
 //! Exports the ActiveForceComputeGPU Class to python

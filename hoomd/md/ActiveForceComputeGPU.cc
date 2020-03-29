@@ -31,10 +31,8 @@ ActiveForceComputeGPU::ActiveForceComputeGPU(std::shared_ptr<SystemDefinition> s
                                         pybind11::list t_lst,
                                         bool orientation_link,
                                         bool orientation_reverse_link,
-                                        Scalar rotation_diff,
-					Scalar L,
-					bool constraint)
-        : ActiveForceCompute(sysdef, group, seed, f_lst, t_lst, orientation_link, orientation_reverse_link, rotation_diff), m_L(L), m_block_size(256)
+                                        Scalar rotation_diff)
+        : ActiveForceCompute(sysdef, group, seed, f_lst, t_lst, orientation_link, orientation_reverse_link, rotation_diff), m_block_size(256),m_manifoldGPU( make_scalar3(0,0,0) )
     {
     if (!m_exec_conf->isCUDAEnabled())
         {
@@ -83,11 +81,16 @@ ActiveForceComputeGPU::ActiveForceComputeGPU(std::shared_ptr<SystemDefinition> s
     m_t_activeVec.swap(tmp_t_activeVec);
     m_t_activeMag.swap(tmp_t_activeMag);
     m_groupTags.swap(tmp_groupTags);
-
-
-    if(constraint) m_constraint=true;
     }
 
+
+void ActiveForceComputeGPU::addManifold(std::shared_ptr<Manifold> manifold)
+	{
+	m_manifold=manifold;
+	EvaluatorConstraintManifold manifoldGPU( manifold->returnL() );
+	m_manifoldGPU = manifoldGPU;
+	m_constraint = true;
+	}
 
 /*! This function sets appropriate active forces and torques on all active particles.
 */
@@ -130,7 +133,7 @@ void ActiveForceComputeGPU::setForces()
                                      d_f_actMag.data,
                                      d_t_actVec.data,
                                      d_t_actMag.data,
-                                     m_L,
+                                     m_manifoldGPU,
                                      m_constraint,
                                      orientationLink,
                                      orientationReverseLink,
@@ -166,7 +169,7 @@ void ActiveForceComputeGPU::rotationalDiffusion(unsigned int timestep)
                                                 d_torque.data,
                                                 d_f_actVec.data,
                                                 d_t_actVec.data,
-                                     		m_L,
+                                     		m_manifoldGPU,
                                      		m_constraint,
                                                 is2D,
                                                 m_rotationConst,
@@ -200,7 +203,7 @@ void ActiveForceComputeGPU::setConstraint()
                                              d_torque.data,
                                              d_f_actVec.data,
                                              d_t_actVec.data,
-                                     	     m_L,
+                                     	     m_manifoldGPU,
                                      	     m_constraint,
                                              m_block_size);
     }
@@ -215,8 +218,6 @@ void export_ActiveForceComputeGPU(py::module& m)
                         pybind11::list,
                         bool,
                         bool,
-                        Scalar,
-                        Scalar,
-                        bool >())
+                        Scalar >())
     ;
     }

@@ -6,6 +6,7 @@
 
 #include "hoomd/HOOMDMath.h"
 #include "hoomd/ParticleData.cuh"
+#include "EvaluatorConstraintManifold.h"
 
 /*! \file ActiveForceComputeGPU.cuh
     \brief Declares GPU kernel code for calculating active forces forces on the GPU. Used by ActiveForceComputeGPU.
@@ -24,7 +25,7 @@ cudaError_t gpu_compute_active_force_set_forces(const unsigned int group_size,
                                            Scalar *d_f_actMag,
                                            Scalar3 *d_t_actVec,
                                            Scalar *d_t_actMag,
-                                           Scalar L,
+                                           EvaluatorConstraintManifold manifold,
                                            bool constraint,
                                            bool orientationLink,
                                            bool orientationReverseLink,
@@ -39,7 +40,7 @@ cudaError_t gpu_compute_active_force_set_constraints(const unsigned int group_si
                                                    Scalar4 *d_torque,
                                                    Scalar3 *d_f_actVec,
                                                    Scalar3 *d_t_actVec,
-                                                   Scalar L,
+                                                   EvaluatorConstraintManifold manifold,
                                                    bool constraint,
                                                    unsigned int block_size);
 
@@ -51,7 +52,7 @@ cudaError_t gpu_compute_active_force_rotational_diffusion(const unsigned int gro
                                                        Scalar4 *d_torque,
                                                        Scalar3 *d_f_actVec,
                                                        Scalar3 *d_t_actVec,
-                                                       Scalar L,
+                                                       EvaluatorConstraintManifold manifold,
                                                        bool constraint,
                                                        bool is2D,
                                                        const Scalar rotationDiff,

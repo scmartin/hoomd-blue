@@ -43,7 +43,7 @@ __global__ void gpu_compute_active_force_set_forces_kernel(const unsigned int gr
                                                     Scalar *d_f_actMag,
                                                     Scalar3 *d_t_actVec,
                                                     Scalar *d_t_actMag,
-                                                    Scalar L,
+                                                    EvaluatorConstraintManifold manifold,
                                                     bool constraint,
                                                     bool orientationLink,
                                                     bool orientationReverseLink,
@@ -126,7 +126,7 @@ __global__ void gpu_compute_active_force_set_constraints_kernel(const unsigned i
                                                    const Scalar4 *d_pos,
                                                    Scalar3 *d_f_actVec,
                                                    Scalar3 *d_t_actVec,
-                                                   Scalar L,
+                                                   EvaluatorConstraintManifold manifold,
 						   bool constraint)
     {
     unsigned int group_idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -138,7 +138,6 @@ __global__ void gpu_compute_active_force_set_constraints_kernel(const unsigned i
 
     Scalar3 current_pos = make_scalar3(d_pos[idx].x, d_pos[idx].y, d_pos[idx].z);
     
-    EvaluatorConstraintManifold manifold(make_scalar3(L,L,L));
 
     Scalar3 norm_scalar3 = manifold.evalNormal(current_pos); // the normal vector to which the particles are confined.
     Scalar nNorm =  slow::sqrt(norm_scalar3.x*norm_scalar3.x + norm_scalar3.y*norm_scalar3.y + norm_scalar3.z*norm_scalar3.z);
@@ -196,7 +195,7 @@ __global__ void gpu_compute_active_force_rotational_diffusion_kernel(const unsig
                                                    const Scalar4 *d_pos,
                                                    Scalar3 *d_f_actVec,
                                                    Scalar3 *d_t_actVec,
-                                                   Scalar L,
+                                                   EvaluatorConstraintManifold manifold,
                                                    bool constraint,
                                                    bool is2D,
                                                    const Scalar rotationDiff,
@@ -259,8 +258,6 @@ __global__ void gpu_compute_active_force_rotational_diffusion_kernel(const unsig
             {
             Scalar3 current_pos = make_scalar3(d_pos[idx].x, d_pos[idx].y, d_pos[idx].z);
 
-            EvaluatorConstraintManifold manifold(make_scalar3(L,L,L));
-
    	    Scalar3 norm_scalar3 = manifold.evalNormal(current_pos);; // the normal vector to which the particles are confined.
 	    Scalar nNorm =  slow::sqrt(norm_scalar3.x*norm_scalar3.x + norm_scalar3.y*norm_scalar3.y + norm_scalar3.z*norm_scalar3.z);
 	    norm_scalar3.x /= nNorm;
@@ -302,7 +299,7 @@ cudaError_t gpu_compute_active_force_set_forces(const unsigned int group_size,
                                            Scalar *d_f_actMag,
                                            Scalar3 *d_t_actVec,
                                            Scalar *d_t_actMag,
-                                           Scalar L,
+                                           EvaluatorConstraintManifold manifold,
                                            bool constraint,
                                            bool orientationLink,
                                            bool orientationReverseLink,
@@ -325,7 +322,7 @@ cudaError_t gpu_compute_active_force_set_forces(const unsigned int group_size,
                                                                     d_f_actMag,
                                                                     d_t_actVec,
                                                                     d_t_actMag,
-                                           			    L,
+                                           			    manifold,
                                            			    constraint,
                                                                     orientationLink,
                                                                     orientationReverseLink,
@@ -341,7 +338,7 @@ cudaError_t gpu_compute_active_force_set_constraints(const unsigned int group_si
                                                    Scalar4 *d_torque,
                                                    Scalar3 *d_f_actVec,
                                                    Scalar3 *d_t_actVec,
-                                           	   Scalar L,
+                                           	   EvaluatorConstraintManifold manifold,
                                            	   bool constraint,
                                                    unsigned int block_size)
     {
@@ -356,7 +353,7 @@ cudaError_t gpu_compute_active_force_set_constraints(const unsigned int group_si
                                                                     d_pos,
                                                                     d_f_actVec,
                                                                     d_t_actVec,
-                                                                    L,
+                                                                    manifold,
                                                                     constraint);
     return cudaSuccess;
     }
@@ -369,7 +366,7 @@ cudaError_t gpu_compute_active_force_rotational_diffusion(const unsigned int gro
                                                        Scalar4 *d_torque,
                                                        Scalar3 *d_f_actVec,
                                                        Scalar3 *d_t_actVec,
-                                                       Scalar L,
+                                                       EvaluatorConstraintManifold manifold,
                                                        bool constraint,
                                                        bool is2D,
                                                        const Scalar rotationDiff,
@@ -389,7 +386,7 @@ cudaError_t gpu_compute_active_force_rotational_diffusion(const unsigned int gro
                                                                     d_pos,
                                                                     d_f_actVec,
                                                                     d_t_actVec,
-                                                                    L,
+                                                                    manifold,
 								    constraint,
                                                                     is2D,
                                                                     rotationDiff,
