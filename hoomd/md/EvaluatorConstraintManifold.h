@@ -39,7 +39,7 @@ class EvaluatorConstraintManifold
 
             NOTE: For the algorithm to work, we must have _rx >= _rz, ry >= _rz, and _rz > 0.
         */
-        DEVICE EvaluatorConstraintManifold(Scalar _L)
+        DEVICE EvaluatorConstraintManifold(Scalar3 _L)
             : L(_L)
             {
             }
@@ -49,13 +49,14 @@ class EvaluatorConstraintManifold
 
             \return Nearest point on the ellipsoid
         */
+
         DEVICE Scalar implicit_function(const Scalar3& U)
         {
-            if (L>0) // if ellipsoid is actually a sphere, use easier method
+            if (L.x>0) // if ellipsoid is actually a sphere, use easier method
                 {
                 // compute the vector pointing from P to V
 
-          	return slow::sin(L*U.x)*slow::cos(L*U.y) + slow::sin(L*U.y)*slow::cos(L*U.z) + slow::sin(L*U.z)*slow::cos(L*U.x);	
+          	return slow::sin(L.x*U.x)*slow::cos(L.y*U.y) + slow::sin(L.y*U.y)*slow::cos(L.z*U.z) + slow::sin(L.z*U.z)*slow::cos(L.x*U.x);	
                 }
             else // else use iterative method
                 {
@@ -70,11 +71,12 @@ class EvaluatorConstraintManifold
         DEVICE Scalar3 evalNormal(const Scalar3& U)
             {
             Scalar3 N;
-            if (L>0) // if ellipsoid is actually a sphere, use easier method
+            if (L.x>0) // if ellipsoid is actually a sphere, use easier method
 	    {
-          	    N.x = L*(slow::cos(L*U.x)*slow::cos(L*U.y) - slow::sin(L*U.z)*slow::sin(L*U.x));
-          	    N.y = L*(slow::cos(L*U.y)*slow::cos(L*U.z) - slow::sin(L*U.x)*slow::sin(L*U.y));
-          	    N.z = L*(slow::cos(L*U.z)*slow::cos(L*U.x) - slow::sin(L*U.y)*slow::sin(L*U.z)); 
+          	    N.x = L.x*(slow::cos(L.x*U.x)*slow::cos(L.y*U.y) - slow::sin(L.z*U.z)*slow::sin(L.x*U.x));
+          	    N.y = L.y*(slow::cos(L.y*U.y)*slow::cos(L.z*U.z) - slow::sin(L.x*U.x)*slow::sin(L.y*U.y));
+          	    N.z = L.z*(slow::cos(L.z*U.z)*slow::cos(L.x*U.x) - slow::sin(L.y*U.y)*slow::sin(L.z*U.z)); 
+
 	    }else{
 		    N.x = 0;
 		    N.y = 0;
@@ -85,7 +87,7 @@ class EvaluatorConstraintManifold
             }
 
     protected:
-        Scalar L;      //!< Position of the ellipsoid
+        Scalar3 L;      //!< Position of the ellipsoid
     };
 
 

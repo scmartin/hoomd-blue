@@ -6,6 +6,7 @@
 
 #include "TwoStepRATTLELangevin.h"
 #include "hoomd/Autotuner.h"
+#include "EvaluatorConstraintManifold.h"
 
 #ifndef __TWO_STEP_RATTLE_LANGEVIN_GPU_H__
 #define __TWO_STEP_RATTLE_LANGEVIN_GPU_H__
@@ -69,6 +70,8 @@ class PYBIND11_EXPORT TwoStepRATTLELangevinGPU : public TwoStepRATTLELangevin
 
         std::unique_ptr<Autotuner> m_tuner_one; //!< Autotuner for block size (step one kernel)
         std::unique_ptr<Autotuner> m_tuner_angular_one; //!< Autotuner for block size (angular step one kernel)
+
+	EvaluatorConstraintManifold m_manifoldGPU;
     };
 
 //! Exports the TwoStepLangevinGPU class to python

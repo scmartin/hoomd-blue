@@ -5,6 +5,7 @@
 // Maintainer: joaander
 
 #include "TwoStepRATTLEBD.h"
+#include "EvaluatorConstraintManifold.h"
 
 #ifndef __TWO_STEP_RATTLE_BD_GPU_H__
 #define __TWO_STEP_RATTLE_BD_GPU_H__
@@ -49,6 +50,7 @@ class PYBIND11_EXPORT TwoStepRATTLEBDGPU : public TwoStepRATTLEBD
 
     protected:
         unsigned int m_block_size;               //!< block size
+	EvaluatorConstraintManifold m_manifoldGPU;
     };
 
 //! Exports the TwoStepRATTLEBDGPU class to python

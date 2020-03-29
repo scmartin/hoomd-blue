@@ -207,6 +207,8 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
 	    resid = manifold.implicit_function(next_pos);
 
             Scalar3 next_normal =  manifold.evalNormal(next_pos);
+
+
 	    Scalar nndotr = dot(next_normal,residual);
 	    Scalar nndotn = dot(next_normal,normal);
 	    Scalar beta = (resid + nndotr)/nndotn;

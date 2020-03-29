@@ -1291,7 +1291,7 @@ class langevin_rattle(_integration_method):
         integrator = integrate.langevin_rattle(group=typeA, manifold=sphere, kT=hoomd.variant.linear_interp([(0, 4.0), (1e6, 1.0)]), seed=10)
 
     """
-    def __init__(self, group, manifold, kT, seed, dscale=False, tally=False, noiseless_t=False, noiseless_r=False, eta=0.000001,Lx=0):
+    def __init__(self, group, manifold, kT, seed, dscale=False, tally=False, noiseless_t=False, noiseless_r=False, eta=0.000001):
         hoomd.util.print_status_line();
 
         # initialize base class

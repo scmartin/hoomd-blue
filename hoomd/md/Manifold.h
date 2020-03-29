@@ -42,7 +42,7 @@ class PYBIND11_EXPORT Manifold
         */
         virtual Scalar3 derivative(Scalar3 point) {return make_scalar3(0, 0, 0);}
 
-	virtual Scalar returnLx() {return 0;}
+	virtual Scalar3 returnL() {return make_scalar3(0, 0, 0);}
 
 #ifdef ENABLE_MPI
         //! Set the communicator to use

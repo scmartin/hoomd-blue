@@ -51,6 +51,15 @@ Scalar3 SphereManifold::derivative(Scalar3 point)
        return 2*delta;
        }
 
+Scalar3 SphereManifold::returnL()
+    {
+	Scalar3 L;
+	L.x=0;
+	L.y=0;
+	L.z=0;
+	return L;
+    }
+
 void SphereManifold::validate()
     {
     BoxDim box = m_pdata->getGlobalBox();
@@ -73,6 +82,6 @@ void export_SphereManifold(pybind11::module& m)
     .def(py::init< std::shared_ptr<SystemDefinition>,Scalar, Scalar3 >())
     .def("implicit_function", &SphereManifold::implicit_function)
     .def("derivative", &SphereManifold::derivative)
-    .def("returnLx", &SphereManifold::returnLx)
+    .def("returnL", &SphereManifold::returnL)
     ;
     }

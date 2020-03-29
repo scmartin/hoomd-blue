@@ -5,6 +5,7 @@
 // Maintainer: joaander
 
 #include "TwoStepRATTLENVE.h"
+#include "EvaluatorConstraintManifold.h"
 
 #ifndef __TWO_STEP_RATTLE_NVE_GPU_H__
 #define __TWO_STEP_RATTLE_NVE_GPU_H__
@@ -61,6 +62,9 @@ class PYBIND11_EXPORT TwoStepRATTLENVEGPU : public TwoStepRATTLENVE
         std::unique_ptr<Autotuner> m_tuner_two; //!< Autotuner for block size (step two kernel)
         std::unique_ptr<Autotuner> m_tuner_angular_one; //!< Autotuner for block size (angular step one kernel)
         std::unique_ptr<Autotuner> m_tuner_angular_two; //!< Autotuner for block size (angular step two kernel)
+
+    protected:
+	EvaluatorConstraintManifold m_manifoldGPU;
     };
 
 //! Exports the TwoStepRATTLENVEGPU class to python

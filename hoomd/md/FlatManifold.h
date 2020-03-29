@@ -44,7 +44,7 @@ class PYBIND11_EXPORT FlatManifold : public Manifold
         */
         Scalar3 derivative(Scalar3 point);
 
-        Scalar returnLx();
+        Scalar3 returnL();
     protected:
         std::string m_surf; //! determines which plane is considered
         Scalar m_shift; //! shift in normal direction

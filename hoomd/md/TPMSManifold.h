@@ -48,7 +48,7 @@ class PYBIND11_EXPORT TPMSManifold : public Manifold
         */
         Scalar3 derivative(Scalar3 point);
 
-        Scalar returnLx();
+        Scalar3 returnL();
     protected:
         std::string m_surf; //! determines the specific TPMS
         Scalar m_Nx; //! number of unit cells in x direction

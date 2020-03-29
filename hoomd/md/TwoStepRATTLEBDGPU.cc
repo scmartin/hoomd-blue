@@ -36,7 +36,7 @@ TwoStepRATTLEBDGPU::TwoStepRATTLEBDGPU(std::shared_ptr<SystemDefinition> sysdef,
                            bool noiseless_t,
                            bool noiseless_r,
                            Scalar eta)
-    : TwoStepRATTLEBD(sysdef, group, manifold,T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta)
+    : TwoStepRATTLEBD(sysdef, group, manifold,T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta), m_manifoldGPU( manifold->returnL() )
     {
     if (!m_exec_conf->isCUDAEnabled())
         {
@@ -95,7 +95,6 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
     args.num_blocks = 0; // handled in driver function
     args.tally = false;
 
-    EvaluatorConstraintManifold manifoldG(m_manifold->returnLx());
 
     bool aniso = m_aniso;
 
@@ -112,6 +111,7 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
             CHECK_CUDA_ERROR();
         }
 
+   
     m_exec_conf->beginMultiGPU();
 
     // perform the update on the GPU
@@ -130,7 +130,7 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
                           d_inertia.data,
                           d_angmom.data,
                           args,
-                          manifoldG,
+                          m_manifoldGPU,
                           aniso,
                           m_deltaT,
                           D,

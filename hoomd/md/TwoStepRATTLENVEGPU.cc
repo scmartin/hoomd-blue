@@ -22,7 +22,7 @@ using namespace std;
 TwoStepRATTLENVEGPU::TwoStepRATTLENVEGPU(std::shared_ptr<SystemDefinition> sysdef,
                        std::shared_ptr<ParticleGroup> group,
                        std::shared_ptr<Manifold> manifold)
-    : TwoStepRATTLENVE(sysdef, group, manifold)
+    : TwoStepRATTLENVE(sysdef, group, manifold), m_manifoldGPU( manifold->returnL() )
     {
     // only one GPU is supported
     if (!m_exec_conf->isCUDAEnabled())
@@ -41,7 +41,6 @@ TwoStepRATTLENVEGPU::TwoStepRATTLENVEGPU(std::shared_ptr<SystemDefinition> sysde
     m_tuner_angular_one.reset(new Autotuner(valid_params, 5, 100000, "rattle_nve_angular_one", this->m_exec_conf));
     m_tuner_angular_two.reset(new Autotuner(valid_params, 5, 100000, "rattle_nve_angular_two", this->m_exec_conf));
     }
-
 /*! \param timestep Current time step
     \post Particle positions are moved forward to timestep+1 and velocities to timestep+1/2 per the velocity verlet
           method.
@@ -61,8 +60,6 @@ void TwoStepRATTLENVEGPU::integrateStepOne(unsigned int timestep)
     BoxDim box = m_pdata->getBox();
     ArrayHandle< unsigned int > d_index_array(m_group->getIndexArray(), access_location::device, access_mode::read);
 
-    EvaluatorConstraintManifold manifoldG(m_manifold->returnLx());
-
     // perform the update on the GPU
     m_exec_conf->beginMultiGPU();
     m_tuner_one->begin();
@@ -73,7 +70,7 @@ void TwoStepRATTLENVEGPU::integrateStepOne(unsigned int timestep)
                      d_index_array.data,
                      m_group->getGPUPartition(),
                      box,
-                     manifoldG,
+                     m_manifoldGPU,
                      m_eta,
                      m_deltaT,
                      m_limit,
@@ -138,8 +135,6 @@ void TwoStepRATTLENVEGPU::integrateStepTwo(unsigned int timestep)
     ArrayHandle<Scalar4> d_net_force(net_force, access_location::device, access_mode::read);
     ArrayHandle< unsigned int > d_index_array(m_group->getIndexArray(), access_location::device, access_mode::read);
 
-    EvaluatorConstraintManifold manifoldG(m_manifold->returnLx());
-
     // perform the update on the GPU
     m_exec_conf->beginMultiGPU();
     m_tuner_two->begin();
@@ -150,7 +145,7 @@ void TwoStepRATTLENVEGPU::integrateStepTwo(unsigned int timestep)
                      d_index_array.data,
                      m_group->getGPUPartition(),
                      d_net_force.data,
-                     manifoldG,
+                     m_manifoldGPU,
                      m_eta,
                      m_deltaT,
                      m_limit,

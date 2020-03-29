@@ -138,7 +138,7 @@ __global__ void gpu_compute_active_force_set_constraints_kernel(const unsigned i
 
     Scalar3 current_pos = make_scalar3(d_pos[idx].x, d_pos[idx].y, d_pos[idx].z);
     
-    EvaluatorConstraintManifold manifold(L);
+    EvaluatorConstraintManifold manifold(make_scalar3(L,L,L));
 
     Scalar3 norm_scalar3 = manifold.evalNormal(current_pos); // the normal vector to which the particles are confined.
     Scalar nNorm =  slow::sqrt(norm_scalar3.x*norm_scalar3.x + norm_scalar3.y*norm_scalar3.y + norm_scalar3.z*norm_scalar3.z);
@@ -259,7 +259,7 @@ __global__ void gpu_compute_active_force_rotational_diffusion_kernel(const unsig
             {
             Scalar3 current_pos = make_scalar3(d_pos[idx].x, d_pos[idx].y, d_pos[idx].z);
 
-    	    EvaluatorConstraintManifold manifold(L);
+            EvaluatorConstraintManifold manifold(make_scalar3(L,L,L));
 
    	    Scalar3 norm_scalar3 = manifold.evalNormal(current_pos);; // the normal vector to which the particles are confined.
 	    Scalar nNorm =  slow::sqrt(norm_scalar3.x*norm_scalar3.x + norm_scalar3.y*norm_scalar3.y + norm_scalar3.z*norm_scalar3.z);
