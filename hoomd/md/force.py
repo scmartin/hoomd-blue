@@ -455,7 +455,7 @@ class active(_force):
             constraint = False
             L = 0
             if (manifold is not None):
-                if (manifold.__class__.__name__ is "tpms_manifold" or manifold.__class__.__name__ is "plane_manifold" ):
+                if (manifold.__class__.__name__ == "tpms_manifold" or manifold.__class__.__name__ == "plane_manifold" ):
                      constraint = True
                      L=self.cpp_force.returnL().x
                 else:
