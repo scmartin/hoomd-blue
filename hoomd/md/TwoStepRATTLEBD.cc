@@ -8,7 +8,6 @@
 #include "hoomd/VectorMath.h"
 #include "QuaternionMath.h"
 #include "hoomd/HOOMDMath.h"
-//#include "EvaluatorConstraintManifold.h"
 
 #include "hoomd/RandomNumbers.h"
 #include "hoomd/RNGIdentifiers.h"
@@ -105,9 +104,6 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 
     unsigned int maxiteration = 10;
 
-    //Scalar Lx = m_manifold->returnLx();	
-    //EvaluatorConstraintManifold manifoldG(Lx); //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
     // perform the first half step
     // r(t+deltaT) = r(t) + (Fc(t) + Fr)*deltaT/gamma
     // iterative: r(t+deltaT) = r(t+deltaT) - J^(-1)*residual
@@ -170,13 +166,13 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	next_pos.z = h_pos.data[j].z;
 
 	Scalar3 normal = m_manifold->derivative(next_pos);
-        //Scalar3 normal = manifoldG.evalNormal(next_pos);
 
 	Scalar3 residual;
 	Scalar resid;
 	unsigned int iteration = 0;
 
-
+	//printf("%d %.20f %.20f %.20f : %.20f \n",j,normal.x,normal.y,normal.z,m_manifold->implicit_function(next_pos));
+	
 	do
 	{
 	    iteration++;
@@ -184,10 +180,9 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	    residual.y = h_pos.data[j].y - next_pos.y + (h_net_force.data[j].y + Fr_y - mu*normal.y) * deltaT_gamma;
 	    residual.z = h_pos.data[j].z - next_pos.z + (h_net_force.data[j].z + Fr_z - mu*normal.z) * deltaT_gamma;
 	    resid = m_manifold->implicit_function(next_pos);
-	    //resid = manifoldG.implicit_function(next_pos);
 
-            Scalar3 next_normal =  m_manifold->derivative(next_pos);
-            //Scalar3 next_normal =  manifoldG.evalNormal(next_pos);
+            Scalar3 next_normal = m_manifold->derivative(next_pos);
+
 	    Scalar nndotr = dot(next_normal,residual);
 	    Scalar nndotn = dot(next_normal,normal);
 	    Scalar beta = (resid + nndotr)/nndotn;
@@ -278,7 +273,6 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
                 }
             }
         }
-
     // done profiling
     if (m_prof)
         m_prof->pop();
