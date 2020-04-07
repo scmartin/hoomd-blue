@@ -126,6 +126,14 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
             }
         Scalar deltaT_gamma = m_deltaT/gamma;
 
+
+	Scalar3 next_pos;
+	next_pos.x = h_pos.data[j].x;
+	next_pos.y = h_pos.data[j].y;
+	next_pos.z = h_pos.data[j].z;
+
+	Scalar3 normal = m_manifold->derivative(next_pos);
+
         Scalar rx, ry, rz, coeff;
 
         if(currentTemp > 0)
@@ -135,6 +143,18 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 		rx = uniform(rng);
 		ry = uniform(rng);
 		rz = uniform(rng);
+
+		Scalar3 proj = normal;
+		Scalar proj_norm = 1.0/slow::sqrt(proj.x*proj.x+proj.y*proj.y+proj.z*proj.z);
+		proj.x *= proj_norm;
+		proj.y *= proj_norm;
+		proj.z *= proj_norm;
+
+		Scalar proj_r = rx*proj.x + ry*proj.y + rz*proj.z;
+
+		rx = rx - proj_r*proj.x;
+		ry = ry - proj_r*proj.y;
+		rz = rz - proj_r*proj.z;
 
 		// compute the bd force (the extra factor of 3 is because <rx^2> is 1/3 in the uniform -1,1 distribution
 		// it is not the dimensionality of the system
@@ -160,12 +180,6 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
 	Scalar inv_alpha = -deltaT_gamma;
 	inv_alpha = Scalar(1.0)/inv_alpha;
 
-	Scalar3 next_pos;
-	next_pos.x = h_pos.data[j].x;
-	next_pos.y = h_pos.data[j].y;
-	next_pos.z = h_pos.data[j].z;
-
-	Scalar3 normal = m_manifold->derivative(next_pos);
 
 	Scalar3 residual;
 	Scalar resid;

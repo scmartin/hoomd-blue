@@ -151,6 +151,12 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
         // compute the random force
         RandomGenerator rng(RNGIdentifier::TwoStepBD, seed, ptag, timestep);
 
+        
+	Scalar3 next_pos;
+	next_pos.x = postype.x;
+	next_pos.y = postype.y;
+	next_pos.z = postype.z;
+        Scalar3 normal = manifold.evalNormal(next_pos);
 
         Scalar rx, ry, rz, coeff;
 
@@ -160,6 +166,18 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
 		rx = uniform(rng);
 		ry = uniform(rng);
 		rz = uniform(rng);
+
+		Scalar3 proj = normal;
+		Scalar proj_norm = 1.0/fast::sqrt(proj.x*proj.x+proj.y*proj.y+proj.z*proj.z);
+		proj.x *= proj_norm;
+		proj.y *= proj_norm;
+		proj.z *= proj_norm;
+
+		Scalar proj_r = rx*proj.x + ry*proj.y + rz*proj.z;
+
+		rx = rx - proj_r*proj.x;
+		ry = ry - proj_r*proj.y;
+		rz = rz - proj_r*proj.z;
 	
                 // compute the bd force (the extra factor of 3 is because <rx^2> is 1/3 in the uniform -1,1 distribution
                 // it is not the dimensionality of the system
@@ -183,16 +201,10 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
         // update position
 
 	Scalar mu = 0;
-        
-	Scalar3 next_pos;
-	next_pos.x = postype.x;
-	next_pos.y = postype.y;
-	next_pos.z = postype.z;
 
         unsigned int maxiteration = 10;
 	Scalar inv_alpha = -deltaT_gamma;
 	inv_alpha = Scalar(1.0)/inv_alpha;
-        Scalar3 normal = manifold.evalNormal(next_pos);
 
 	Scalar3 residual;
 	Scalar resid;
