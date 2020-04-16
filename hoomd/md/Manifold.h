@@ -44,6 +44,8 @@ class PYBIND11_EXPORT Manifold
 
 	virtual Scalar3 returnL() {return make_scalar3(0, 0, 0);}
 
+	virtual bool returnSurf(int i) {return false;}
+
 #ifdef ENABLE_MPI
         //! Set the communicator to use
         /*! \param comm MPI communication class

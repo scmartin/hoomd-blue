@@ -32,7 +32,7 @@ ActiveForceComputeGPU::ActiveForceComputeGPU(std::shared_ptr<SystemDefinition> s
                                         bool orientation_link,
                                         bool orientation_reverse_link,
                                         Scalar rotation_diff)
-        : ActiveForceCompute(sysdef, group, seed, f_lst, t_lst, orientation_link, orientation_reverse_link, rotation_diff), m_block_size(256),m_manifoldGPU( make_scalar3(0,0,0) )
+        : ActiveForceCompute(sysdef, group, seed, f_lst, t_lst, orientation_link, orientation_reverse_link, rotation_diff), m_block_size(256),m_manifoldGPU( make_scalar3(0,0,0) , false, false )
     {
     if (!m_exec_conf->isCUDAEnabled())
         {
@@ -87,7 +87,7 @@ ActiveForceComputeGPU::ActiveForceComputeGPU(std::shared_ptr<SystemDefinition> s
 void ActiveForceComputeGPU::addManifold(std::shared_ptr<Manifold> manifold)
 	{
 	m_manifold=manifold;
-	EvaluatorConstraintManifold manifoldGPU( manifold->returnL() );
+	EvaluatorConstraintManifold manifoldGPU( manifold->returnL(), manifold->returnSurf(0), manifold->returnSurf(1) );
 	m_manifoldGPU = manifoldGPU;
 	m_constraint = true;
 	}

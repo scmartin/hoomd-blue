@@ -45,6 +45,8 @@ class PYBIND11_EXPORT SphereManifold : public Manifold
         Scalar3 derivative(Scalar3 point);
 
 	Scalar3 returnL();
+
+	bool returnSurf(int j){return false;};
     protected:
         Scalar m_r; //! The radius of the sphere.
         Scalar3 m_P; //! The center of the sphere.

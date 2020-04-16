@@ -87,6 +87,12 @@ Scalar3 TPMSManifold::returnL()
 	return L;
     }
 
+bool TPMSManifold::returnSurf(int j)
+    {
+	if(j==0) return gyroid;
+	else return diamond;
+    }
+
 void TPMSManifold::setup()
     {
 
@@ -111,5 +117,6 @@ void export_TPMSManifold(pybind11::module& m)
     .def("implicit_function", &TPMSManifold::implicit_function)
     .def("derivative", &TPMSManifold::derivative)
     .def("returnL", &TPMSManifold::returnL)
+    .def("returnSurf", &TPMSManifold::returnSurf)
     ;
     }

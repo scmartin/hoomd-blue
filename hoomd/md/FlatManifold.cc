@@ -52,15 +52,6 @@ Scalar FlatManifold::implicit_function(Scalar3 point)
 	       }
        }
 
-Scalar3 FlatManifold::returnL()
-    {
-	Scalar3 L;
-	L.x=0;
-	L.y=0;
-	L.z=0;
-	return L;
-    }
-
        //! Return the gradient of the constraint.
        /*! \param point The location to evaluate the gradient.
        */
@@ -77,6 +68,22 @@ Scalar3 FlatManifold::derivative(Scalar3 point)
 	       }
        }
 
+Scalar3 FlatManifold::returnL()
+    {
+	Scalar3 L;
+	L.x=0;
+	L.y=0;
+	L.z=0;
+	return L;
+    }
+
+bool FlatManifold::returnSurf(int j)
+    {
+	if(j==0) return xy;
+	else return xz;
+    }
+
+
 //! Exports the FlatManifold class to python
 void export_FlatManifold(pybind11::module& m)
     {
@@ -85,5 +92,6 @@ void export_FlatManifold(pybind11::module& m)
     .def("implicit_function", &FlatManifold::implicit_function)
     .def("derivative", &FlatManifold::derivative)
     .def("returnL", &FlatManifold::returnL)
+    .def("returnSurf", &FlatManifold::returnSurf)
     ;
     }

@@ -36,7 +36,7 @@ TwoStepRATTLEBDGPU::TwoStepRATTLEBDGPU(std::shared_ptr<SystemDefinition> sysdef,
                            bool noiseless_t,
                            bool noiseless_r,
                            Scalar eta)
-    : TwoStepRATTLEBD(sysdef, group, manifold,T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta), m_manifoldGPU( manifold->returnL() )
+    : TwoStepRATTLEBD(sysdef, group, manifold,T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta), m_manifoldGPU( manifold->returnL(), manifold->returnSurf(0), manifold->returnSurf(1) )
     {
     if (!m_exec_conf->isCUDAEnabled())
         {
