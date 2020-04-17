@@ -103,9 +103,15 @@ void TPMSManifold::setup()
     BoxDim box = m_pdata->getGlobalBox();
     Scalar3 box_length = box.getHi() - box.getLo();
 
-    Lx = Scalar(2.0)*M_PI*m_Nx/box_length.x;
-    Ly = Scalar(2.0)*M_PI*m_Ny/box_length.y;
-    Lz = Scalar(2.0)*M_PI*m_Nz/box_length.z;
+    Lx = M_PI*m_Nx/box_length.x;
+    Ly = M_PI*m_Ny/box_length.y;
+    Lz = M_PI*m_Nz/box_length.z;
+    
+   if(!diamond){
+       Lx *= Scalar(2.0);
+       Ly *= Scalar(2.0);
+       Lz *= Scalar(2.0);
+   }
 
     }
 
