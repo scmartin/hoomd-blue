@@ -390,7 +390,9 @@ unsigned int Autotuner::computeOptimalParameter()
 float Autotuner::measure(unsigned int param)
     {
     if (!m_attached)
+        {
         throw std::runtime_error("The Autotuner is not attached. Cannot measure kernel run time.\n");
+        }
 
         {
         std::lock_guard<std::mutex> lk(m_mutex);

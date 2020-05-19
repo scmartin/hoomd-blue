@@ -249,7 +249,10 @@ class PYBIND11_EXPORT Autotuner
         void setOptimalParameter(unsigned int opt)
             {
             if (! m_attached)
+                {
                 throw std::runtime_error("The Autotuner is not attached. Cannot set optimal parameter value.\n");
+                }
+
                 {
                 std::lock_guard<std::mutex> lk(m_mutex);
 
