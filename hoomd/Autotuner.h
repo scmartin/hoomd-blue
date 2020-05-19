@@ -15,6 +15,9 @@
 #include <vector>
 #include <string>
 
+#include <mutex>
+#include <condition_variable>
+
 #ifdef ENABLE_HIP
 #include <hip/hip_runtime.h>
 #endif
@@ -46,6 +49,24 @@
 
     Autotuner is not useful in non-GPU builds. Timing is performed with CUDA events and requires ENABLE_HIP=on.
     Behavior of Autotuner is undefined when ENABLE_HIP=off.
+
+    ** Attaching to a tuner from a CPU thread **
+    It is possible to attach to the tuner from a different CPU thread to supply the next parameter and get the last
+    execution time as a return value. In this way, we can allow a python thread running, e.g., a minimization routine,
+    to select the next parameter value instead of iterating over them in a flat array. Proper synchronization
+    primitives between the tuning thread and the GPU execution thread are provided. When attached, we yield control over
+    the selection of the optimal parameter to the thread.
+
+    When the tuner thread attaches, it sets an initial parameter value for the
+    next kernel launch.
+
+    The entry point for tuning is measure(). The launch of the kernel being
+    autotuned will block until measure() is called with a valid parameter
+    value. The method returns the kernel execution time in ms after the kernel
+    has completed.
+
+    When the host thread is done it sets the optimal parameter value using
+    setOptimalParameter() and detaches from the tuner.
 
     ** Implementation ** <br>
     Internally, m_nsamples is the number of samples to take (odd for median computation). m_current_sample is the
@@ -87,6 +108,9 @@ class PYBIND11_EXPORT Autotuner
 
         While sampling, the value returned by this function will sweep though all valid parameters. Otherwise, it will
         return the fastest performing parameter.
+
+        When attached to an external tuner, this function is called by the kernel excecution thread.
+        The return value is undefined unless inside a tuning block, which is demarcated by begin() and end() calls
         */
         unsigned int getParam()
             {
@@ -104,17 +128,20 @@ class PYBIND11_EXPORT Autotuner
                 {
                 m_exec_conf->msg->notice(6) << "Disable Autotuner " << m_name << std::endl;
 
-                // if not complete, issue a warning
-                if (!isComplete())
+                if (!m_attached)
                     {
-                    m_exec_conf->msg->notice(2) << "Disabling Autotuner " << m_name << " before initial scan completed!" << std::endl;
-                    }
-                else
-                    {
-                    // ensure that we are in the idle state and have an up to date optimal parameter
-                    m_current_element = 0;
-                    m_state = IDLE;
-                    m_current_param = computeOptimalParameter();
+                    // if not complete, issue a warning
+                    if (!isComplete())
+                        {
+                        m_exec_conf->msg->notice(2) << "Disabling Autotuner " << m_name << " before initial scan completed!" << std::endl;
+                        }
+                    else
+                        {
+                        // ensure that we are in the idle state and have an up to date optimal parameter
+                        m_current_element = 0;
+                        m_state = IDLE;
+                        m_current_param = computeOptimalParameter();
+                        }
                     }
                 }
             else
@@ -181,6 +208,71 @@ class PYBIND11_EXPORT Autotuner
             return v;
             }
 
+        /*
+         * API for controlling tuning from a CPU thread
+         */
+
+        //! Return the list of parameters for use in a different host thread
+        pybind11::list getParameterList()
+            {
+            pybind11::list l;
+            for (auto p: m_parameters)
+                l.append(p);
+            return l;
+            }
+
+        //! Return the name of this tuner
+        std::string getName()
+            {
+            return m_name;
+            }
+
+        //! Attach the GPU kernel to a controlling thread
+        /*! This causes the next kernel launch to block until a parameter
+         * value is supplied from a different thread using measure()
+         *
+         * Attachment must be performed while the kernel is **not** running, e.g.
+         * from the same thread as the GPU execution thread before entering
+         * the time stepping loop of the simulation, run()
+         */
+        void attach()
+            {
+            m_attached = true;
+            }
+
+        //! Set the optimal parameter value to use and detach
+        /*! \param opt The result of the minimization
+         *
+         * This method can be called (from the controlling thread) regardless of whether the
+         * kernel is running and sets the parameter value for subsequent launches
+         */
+        void setOptimalParameter(unsigned int opt)
+            {
+            if (! m_attached)
+                throw std::runtime_error("The Autotuner is not attached. Cannot set optimal parameter value.\n");
+                {
+                std::lock_guard<std::mutex> lk(m_mutex);
+
+                // set the new parameter
+                m_current_param = opt;
+                m_have_param = true;
+                m_attached = false;
+                m_state = IDLE;
+                }
+
+            // wake up kernel thread
+            m_cv.notify_one();
+            }
+
+        //! Measure the execution time of the next kernel launch
+        /* \param param the launch parameter to be tested
+         * \returns the execution time in ms
+         *
+         * This method is intended be called from a separate host thread and
+         * only returns when the kernel launch has completed.
+         */
+        float measure(unsigned int param);
+
     protected:
         unsigned int computeOptimalParameter();
 
@@ -218,6 +310,17 @@ class PYBIND11_EXPORT Autotuner
 
         bool m_sync;              //!< If true, synchronize results via MPI
         mode_Enum m_mode;         //!< The sampling mode
+
+        //! Variable for controlling tuning from a different CPU thread
+        std::mutex m_mutex;             //!< Mutex for autotuning from a CPU thread
+        std::condition_variable m_cv;   //!< Condition variable for synchronizing the GPU execution thread with the tuner thread
+
+        std::unique_lock<std::mutex> m_lock; //!< The lock operated by the GPU execution thread
+
+        bool m_attached;                //!< True if we are attached to an external tuning thread
+        float m_last_sample;            //!< The last sample taken
+        bool m_have_param;              //!< True if the tuner thread is waiting for a timing
+        bool m_have_timing;             //!< True if we have a current timing value
     };
 
 //! Export the Autotuner class to python

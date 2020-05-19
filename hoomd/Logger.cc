@@ -207,6 +207,7 @@ Scalar Logger::getValue(const std::string &quantity, int timestep)
         // get a quantity from a callback
         try
             {
+            py::gil_scoped_acquire acquire;
             py::object rv = pybind11::reinterpret_borrow<py::object>(m_callback_quantities[quantity])(timestep);
             Scalar extracted_rv = rv.cast<Scalar>();
             return extracted_rv;

@@ -33,7 +33,8 @@ Autotuner::Autotuner(const std::vector<unsigned int>& parameters,
                      std::shared_ptr<const ExecutionConfiguration> exec_conf)
     : m_nsamples(nsamples), m_period(period), m_enabled(true), m_name(name), m_parameters(parameters),
       m_state(STARTUP), m_current_sample(0), m_current_element(0), m_calls(0),
-      m_exec_conf(exec_conf), m_mode(mode_median)
+      m_exec_conf(exec_conf), m_mode(mode_median), m_lock(m_mutex, std::defer_lock),
+      m_attached(false), m_have_param(false), m_have_timing(false)
     {
     m_exec_conf->msg->notice(5) << "Constructing Autotuner " << nsamples << " " << period << " " << name << endl;
 
@@ -87,7 +88,8 @@ Autotuner::Autotuner(unsigned int start,
                      std::shared_ptr<const ExecutionConfiguration> exec_conf)
     : m_nsamples(nsamples), m_period(period), m_enabled(true), m_name(name),
       m_state(STARTUP), m_current_sample(0), m_current_element(0), m_calls(0), m_current_param(0),
-      m_exec_conf(exec_conf), m_mode(mode_median)
+      m_exec_conf(exec_conf), m_mode(mode_median), m_lock(m_mutex, std::defer_lock), m_attached(false),
+      m_have_param(false), m_have_timing(false)
     {
     m_exec_conf->msg->notice(5) << "Constructing Autotuner " << " " << start << " " << end << " " << step << " "
                                 << nsamples << " " << period << " " << name << endl;
@@ -147,9 +149,17 @@ void Autotuner::begin()
     if (!m_enabled)
         return;
 
+    if (m_attached)
+        {
+        // wait until we have a new parameter value and lock the mutex
+        m_lock.lock();
+        m_cv.wait(m_lock, [=]{return m_have_param;});
+        m_have_param = false;
+        }
+
     #ifdef ENABLE_HIP
     // if we are scanning, record a cuda event - otherwise do nothing
-    if (m_state == STARTUP || m_state == SCANNING)
+    if (m_attached || m_state == STARTUP || m_state == SCANNING)
         {
         hipEventRecord(m_start, 0);
         if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
@@ -164,13 +174,15 @@ void Autotuner::end()
     if (!m_enabled)
         return;
 
+    float sample = 0.0f;
     #ifdef ENABLE_HIP
     // handle timing updates if scanning
-    if (m_state == STARTUP || m_state == SCANNING)
+    if (m_attached || m_state == STARTUP || m_state == SCANNING)
         {
         hipEventRecord(m_stop, 0);
         hipEventSynchronize(m_stop);
-        hipEventElapsedTime(&m_samples[m_current_element][m_current_sample], m_start, m_stop);
+        hipEventElapsedTime(&sample, m_start, m_stop);
+        m_samples[m_current_element][m_current_sample] = sample;
         m_exec_conf->msg->notice(9) << "Autotuner " << m_name << ": t(" << m_current_param << "," << m_current_sample
                                      << ") = " << m_samples[m_current_element][m_current_sample] << endl;
 
@@ -179,24 +191,60 @@ void Autotuner::end()
         }
     #endif
 
-    // handle state data updates and transitions
-    if (m_state == STARTUP)
+    if (m_attached)
         {
-        // move on to the next sample
-        m_current_sample++;
+        m_last_sample = sample;
 
-        // if we hit the end of the samples, reset and move on to the next element
-        if (m_current_sample >= m_nsamples)
+        // let tuner know we have a sample
+        m_have_timing = true;
+
+        // release the lock
+        m_lock.unlock();
+
+        // signal that a new measurement is available
+        m_cv.notify_one();
+        }
+    else
+        {
+        // handle state data updates and transitions
+        if (m_state == STARTUP)
             {
-            m_current_sample = 0;
+            // move on to the next sample
+            m_current_sample++;
+
+            // if we hit the end of the samples, reset and move on to the next element
+            if (m_current_sample >= m_nsamples)
+                {
+                m_current_sample = 0;
+                m_current_element++;
+
+                // if we hit the end of the elements, transition to the IDLE state and compute the optimal parameter
+                if (m_current_element >= m_parameters.size())
+                    {
+                    m_current_element = 0;
+                    m_state = IDLE;
+                    m_current_param = computeOptimalParameter();
+                    }
+                else
+                    {
+                    // if moving on to the next element, update the cached parameter to set
+                    m_current_param = m_parameters[m_current_element];
+                    }
+                }
+            }
+        else if (m_state == SCANNING)
+            {
+            // move on to the next element
             m_current_element++;
 
-            // if we hit the end of the elements, transition to the IDLE state and compute the optimal parameter
+            // if we hit the end of the elements, transition to the IDLE state and compute the optimal parameter, and move
+            // on to the next sample for next time
             if (m_current_element >= m_parameters.size())
                 {
                 m_current_element = 0;
                 m_state = IDLE;
                 m_current_param = computeOptimalParameter();
+                m_current_sample = (m_current_sample + 1) % m_nsamples;
                 }
             else
                 {
@@ -204,41 +252,21 @@ void Autotuner::end()
                 m_current_param = m_parameters[m_current_element];
                 }
             }
-        }
-    else if (m_state == SCANNING)
-        {
-        // move on to the next element
-        m_current_element++;
-
-        // if we hit the end of the elements, transition to the IDLE state and compute the optimal parameter, and move
-        // on to the next sample for next time
-        if (m_current_element >= m_parameters.size())
+        else if (m_state == IDLE)
             {
-            m_current_element = 0;
-            m_state = IDLE;
-            m_current_param = computeOptimalParameter();
-            m_current_sample = (m_current_sample + 1) % m_nsamples;
-            }
-        else
-            {
-            // if moving on to the next element, update the cached parameter to set
-            m_current_param = m_parameters[m_current_element];
-            }
-        }
-    else if (m_state == IDLE)
-        {
-        // increment the calls counter and see if we should transition to the scanning state
-        m_calls++;
+            // increment the calls counter and see if we should transition to the scanning state
+            m_calls++;
 
-        if (m_calls > m_period)
-            {
-            // reset state for the next time
-            m_calls = 0;
+            if (m_calls > m_period)
+                {
+                // reset state for the next time
+                m_calls = 0;
 
-            // initialize a scan
-            m_current_param = m_parameters[m_current_element];
-            m_state = SCANNING;
-            m_exec_conf->msg->notice(4) << "Autotuner " << m_name << " - beginning scan" << std::endl;
+                // initialize a scan
+                m_current_param = m_parameters[m_current_element];
+                m_state = SCANNING;
+                m_exec_conf->msg->notice(4) << "Autotuner " << m_name << " - beginning scan" << std::endl;
+                }
             }
         }
     }
@@ -352,13 +380,54 @@ unsigned int Autotuner::computeOptimalParameter()
     return opt;
     }
 
+//! Measure the execution time of the next kernel launch
+/* \param param the launch parameter to be tested
+ * \returns the execution time in ms
+ *
+ * This method is intended be called from a separate host thread and
+ * only returns when the kernel launch has completed.
+ */
+float Autotuner::measure(unsigned int param)
+    {
+    if (!m_attached)
+        throw std::runtime_error("The Autotuner is not attached. Cannot measure kernel run time.\n");
+
+        {
+        std::lock_guard<std::mutex> lk(m_mutex);
+
+        // set the new parameter
+        m_current_param = param;
+        m_have_param = true;
+        }
+
+    // signal that a new parameter is available, this unblocks a pending kernel launch
+    m_cv.notify_one();
+
+    float m;
+        {
+        std::unique_lock<std::mutex> lk(m_mutex);
+
+        // wait until the result is available
+        m_cv.wait(lk, [=]{return m_have_timing;});
+        m = m_last_sample;
+        m_have_timing = false;
+        }
+
+    return m;
+    }
+
 void export_Autotuner(py::module& m)
     {
     py::class_<Autotuner>(m,"Autotuner")
     .def(py::init< unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, const std::string&, std::shared_ptr<ExecutionConfiguration> >())
     .def("getParam", &Autotuner::getParam)
     .def("setEnabled", &Autotuner::setEnabled)
-    .def("setMoveRatio", &Autotuner::isComplete)
-    .def("setNSelect", &Autotuner::setPeriod)
+    .def("isComplete", &Autotuner::isComplete)
+    .def("setPeriod", &Autotuner::setPeriod)
+    .def("getName", &Autotuner::getName)
+    .def("getParameterList", &Autotuner::getParameterList)
+    .def("attach", &Autotuner::attach, pybind11::call_guard<py::gil_scoped_release>())
+    .def("measure", &Autotuner::measure, pybind11::call_guard<py::gil_scoped_release>())
+    .def("setOptimalParameter", &Autotuner::setOptimalParameter, pybind11::call_guard<py::gil_scoped_release>())
     ;
     }

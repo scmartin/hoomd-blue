@@ -640,6 +640,15 @@ class mode_hpmc(_integrator):
             else:
                 return float('nan')
 
+    def get_tuners(self):
+        R""" Get all Autotuner objects this integrator owns
+
+        Returns:
+            A list of tuners
+        """
+        return self.cpp_integrator.getAutotuners()
+
+
 ## Helper methods to set rotation and translation moves by type
 def setD(cpp_integrator,d):
     if isinstance(d, dict):

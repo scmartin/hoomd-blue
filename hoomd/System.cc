@@ -552,6 +552,8 @@ void System::run(unsigned int nsteps, unsigned int cb_frequency,
         // a negative return value indicates immediate end of run.
         if (!callback.is(py::none()) && (cb_frequency > 0) && (m_cur_tstep % cb_frequency == 0))
             {
+            py::gil_scoped_acquire acquire;
+
             py::object rv = callback(m_cur_tstep);
             if (!rv.is(py::none()))
                 {
@@ -928,7 +930,7 @@ void export_System(py::module& m)
     .def("setAutotunerParams", &System::setAutotunerParams)
     .def("enableProfiler", &System::enableProfiler)
     .def("enableQuietRun", &System::enableQuietRun)
-    .def("run", &System::run)
+    .def("run", &System::run, pybind11::call_guard<py::gil_scoped_release>())
 
     .def("getLastTPS", &System::getLastTPS)
     .def("getCurrentTimeStep", &System::getCurrentTimeStep)

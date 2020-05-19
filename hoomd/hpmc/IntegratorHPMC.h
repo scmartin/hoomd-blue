@@ -192,6 +192,12 @@ class PatchEnergy
             throw std::runtime_error("PatchEnergy (base class) does not support setAutotunerParams");
             }
 
+        //! Return the autotuner objects
+        virtual std::vector<std::shared_ptr<Autotuner> > getAutotuners()
+            {
+            throw std::runtime_error("PatchEnergy (base class) does not support setAutotunerParams");
+            }
+
         //! Asynchronously launch the JIT kernel
         /*! \param args Kernel arguments
             \param hStream stream to execute on
