@@ -330,6 +330,7 @@ void Messenger::openFile(const std::string& fname)
 */
 void Messenger::openPython()
     {
+    pybind11::gil_scoped_acquire acquire;
     // only import sys on first load
     if (!m_python_open)
         m_sys = pybind11::module::import("sys");
@@ -359,9 +360,15 @@ void Messenger::reopenPythonIfNeeded()
     // and python is initialized
     if (m_python_open && Py_IsInitialized())
         {
-        // flush and reopen the streams if sys.stdout or sys.stderr change
-        pybind11::object new_pystdout = m_sys.attr("stdout");
-        pybind11::object new_pystderr = m_sys.attr("stderr");
+        pybind11::object new_pystdout;
+        pybind11::object new_pystderr;
+
+            {
+            // flush and reopen the streams if sys.stdout or sys.stderr change
+            pybind11::gil_scoped_acquire acquire;
+            new_pystdout = m_sys.attr("stdout");
+            new_pystderr = m_sys.attr("stderr");
+            }
         if (!new_pystdout.is(m_pystdout) || !new_pystderr.is(m_pystderr))
             {
             m_file_out->flush();
