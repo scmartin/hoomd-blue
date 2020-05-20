@@ -740,21 +740,27 @@ class remove_drift(_updater):
 class clusters(_updater):
     R""" Equilibrate the system according to the geometric cluster algorithm (GCA).
 
-    The GCA as described in Liu and Lujten (2004), http://doi.org/10.1103/PhysRevLett.92.035504 is used for hard shape,
-    patch interactions and depletants.
+    The GCA as described in Liu and Lujten (2004),
+    http://doi.org/10.1103/PhysRevLett.92.035504 is used for hard shape, patch
+    interactions and depletants.
 
-    With depletants, Clusters are defined by a simple distance cut-off criterion. Two particles belong to the same cluster if
-    the circumspheres of the depletant-excluded volumes overlap.
+    Implicit depletants are supported and simulated on-the-fly, as if they were
+    present in the actual system.
 
-    Supported moves include pivot moves (point reflection), line reflections (pi rotation around an axis), and type swaps.
-    Only the pivot move is rejection free. With anisotropic particles, the pivot move cannot be used because it would create a
-    chiral mirror image of the particle, and only line reflections are employed. Line reflections are not rejection free because
-    of periodic boundary conditions, as discussed in Sinkovits et al. (2012), http://doi.org/10.1063/1.3694271 .
+    Supported moves include pivot moves (point reflection) and line reflections
+    (pi rotation around an axis).  With anisotropic particles, the pivot move
+    cannot be used because it would create a chiral mirror image of the
+    particle, and only line reflections are employed. In general, line
+    reflections are not rejection free because of periodic boundary conditions,
+    as discussed in Sinkovits et al. (2012), http://doi.org/10.1063/1.3694271 .
+    However, we restrict the line reflections to axes parallel to the box axis,
+    which makes those moves rejection-free for anisotropic particles, but the
+    algorithm is then no longer ergodic for those and needs to be combined with
+    local moves.
 
-    The type swap move works between two types of spherical particles and exchanges their identities.
-
-    The :py:class:`clusters` updater support TBB execution on multiple CPU cores. See :doc:`installation` for more information on how
-    to compile HOOMD with TBB support.
+    The :py:class:`clusters` updater support TBB execution on multiple CPU
+    cores. See :doc:`installation` for more information on how to compile HOOMD
+    with TBB support.
 
     Args:
         mc (:py:mod:`hoomd.hpmc.integrate`): MC integrator.
@@ -844,15 +850,12 @@ class clusters(_updater):
         # register the clusters updater
         self.setupUpdater(period)
 
-    def set_params(self, move_ratio=None, flip_probability=None, swap_move_ratio=None, delta_mu=None, swap_types=None):
+    def set_params(self, move_ratio=None, flip_probability=None):
         R""" Set options for the clusters moves.
 
         Args:
             move_ratio (float): Set the ratio between pivot and reflection moves (default 0.5)
             flip_probability (float): Set the probability for transforming an individual cluster (default 0.5)
-            swap_move_ratio (float): Set the ratio between type swap moves and geometric moves (default 0.5)
-            delta_mu (float): The chemical potential difference between types to be swapped
-            swap_types (list): A pair of two types whose identities are swapped
 
         Note:
             When an argument is None, the value is left unchanged from its current state.
@@ -861,7 +864,6 @@ class clusters(_updater):
 
             clusters = hpmc.update.clusters(mc, seed=123)
             clusters.set_params(move_ratio = 1.0)
-            clusters.set_params(swap_types=['A','B'], delta_mu = -0.001)
         """
 
 
@@ -870,21 +872,6 @@ class clusters(_updater):
 
         if flip_probability is not None:
             self.cpp_updater.setFlipProbability(float(flip_probability))
-
-        if swap_move_ratio is not None:
-            self.cpp_updater.setSwapMoveRatio(float(swap_move_ratio))
-
-        if delta_mu is not None:
-            self.cpp_updater.setDeltaMu(float(delta_mu))
-
-        if swap_types is not None:
-            my_swap_types = tuple(swap_types)
-            if len(my_swap_types) != 2:
-                hoomd.context.current.device.cpp_msg.error("update.clusters: Need exactly two types for type swap.\n");
-                raise RuntimeError("Error setting parameters in update.clusters");
-            type_A = hoomd.context.current.system_definition.getParticleData().getTypeByName(my_swap_types[0]);
-            type_B = hoomd.context.current.system_definition.getParticleData().getTypeByName(my_swap_types[1]);
-            self.cpp_updater.setSwapTypePair(type_A, type_B)
 
     def get_pivot_acceptance(self):
         R""" Get the average acceptance ratio for pivot moves
@@ -904,11 +891,11 @@ class clusters(_updater):
         counters = self.cpp_updater.getCounters(1);
         return counters.getReflectionAcceptance();
 
-    def get_swap_acceptance(self):
-        R""" Get the average acceptance ratio for swap moves
+    def get_tuners(self):
+        R""" Get all Autotuner objects this integrator owns
 
         Returns:
-            The average acceptance rate for type swap moves during the last run
+            A list of tuners
         """
-        counters = self.cpp_updater.getCounters(1);
-        return counters.getSwapAcceptance();
+        return self.cpp_updater.getAutotuners()
+
