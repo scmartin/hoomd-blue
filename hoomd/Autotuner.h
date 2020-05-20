@@ -16,6 +16,7 @@
 #include <string>
 
 #include <mutex>
+#include <atomic>
 #include <condition_variable>
 
 #ifdef ENABLE_HIP
@@ -246,26 +247,7 @@ class PYBIND11_EXPORT Autotuner
          * This method can be called (from the controlling thread) regardless of whether the
          * kernel is running and sets the parameter value for subsequent launches
          */
-        void setOptimalParameter(unsigned int opt)
-            {
-            if (! m_attached)
-                {
-                throw std::runtime_error("The Autotuner is not attached. Cannot set optimal parameter value.\n");
-                }
-
-                {
-                std::lock_guard<std::mutex> lk(m_mutex);
-
-                // set the new parameter
-                m_current_param = opt;
-                m_have_param = true;
-                m_attached = false;
-                m_state = IDLE;
-                }
-
-            // wake up kernel thread
-            m_cv.notify_one();
-            }
+        void setOptimalParameter(unsigned int opt);
 
         //! Measure the execution time of the next kernel launch
         /* \param param the launch parameter to be tested
@@ -290,7 +272,7 @@ class PYBIND11_EXPORT Autotuner
         // parameters
         unsigned int m_nsamples;    //!< Number of samples to take for each parameter
         unsigned int m_period;      //!< Number of calls before sampling occurs again
-        bool m_enabled;             //!< True if enabled
+        std::atomic<bool> m_enabled;//!< True if enabled
         std::string m_name;         //!< Descriptive name
         std::vector<unsigned int> m_parameters;  //!< valid parameters
 
@@ -318,9 +300,7 @@ class PYBIND11_EXPORT Autotuner
         std::mutex m_mutex;             //!< Mutex for autotuning from a CPU thread
         std::condition_variable m_cv;   //!< Condition variable for synchronizing the GPU execution thread with the tuner thread
 
-        std::unique_lock<std::mutex> m_lock; //!< The lock operated by the GPU execution thread
-
-        bool m_attached;                //!< True if we are attached to an external tuning thread
+        std::atomic<bool> m_attached;   //!< True if we are attached to an external tuning thread
         float m_last_sample;            //!< The last sample taken
         bool m_have_param;              //!< True if the tuner thread is waiting for a timing
         bool m_have_timing;             //!< True if we have a current timing value

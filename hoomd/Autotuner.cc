@@ -33,7 +33,7 @@ Autotuner::Autotuner(const std::vector<unsigned int>& parameters,
                      std::shared_ptr<const ExecutionConfiguration> exec_conf)
     : m_nsamples(nsamples), m_period(period), m_enabled(true), m_name(name), m_parameters(parameters),
       m_state(STARTUP), m_current_sample(0), m_current_element(0), m_calls(0),
-      m_exec_conf(exec_conf), m_mode(mode_median), m_lock(m_mutex, std::defer_lock),
+      m_exec_conf(exec_conf), m_mode(mode_median),
       m_attached(false), m_have_param(false), m_have_timing(false)
     {
     m_exec_conf->msg->notice(5) << "Constructing Autotuner " << nsamples << " " << period << " " << name << endl;
@@ -88,7 +88,7 @@ Autotuner::Autotuner(unsigned int start,
                      std::shared_ptr<const ExecutionConfiguration> exec_conf)
     : m_nsamples(nsamples), m_period(period), m_enabled(true), m_name(name),
       m_state(STARTUP), m_current_sample(0), m_current_element(0), m_calls(0), m_current_param(0),
-      m_exec_conf(exec_conf), m_mode(mode_median), m_lock(m_mutex, std::defer_lock), m_attached(false),
+      m_exec_conf(exec_conf), m_mode(mode_median), m_attached(false),
       m_have_param(false), m_have_timing(false)
     {
     m_exec_conf->msg->notice(5) << "Constructing Autotuner " << " " << start << " " << end << " " << step << " "
@@ -149,17 +149,18 @@ void Autotuner::begin()
     if (!m_enabled)
         return;
 
-    if (m_attached)
+    bool attached = m_attached;
+    if (attached)
         {
-        // wait until we have a new parameter value and lock the mutex
-        m_lock.lock();
-        m_cv.wait(m_lock, [=]{return m_have_param;});
+        // wait until we have a new parameter value
+        std::unique_lock<std::mutex> lk(m_mutex);
+        m_cv.wait(lk, [=]{return m_have_param;});
         m_have_param = false;
         }
 
     #ifdef ENABLE_HIP
     // if we are scanning, record a cuda event - otherwise do nothing
-    if (m_attached || m_state == STARTUP || m_state == SCANNING)
+    if (attached || m_state == STARTUP || m_state == SCANNING)
         {
         hipEventRecord(m_start, 0);
         if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
@@ -176,30 +177,37 @@ void Autotuner::end()
 
     float sample = 0.0f;
     #ifdef ENABLE_HIP
-    // handle timing updates if scanning
-    if (m_attached || m_state == STARTUP || m_state == SCANNING)
+    // handle timing updates if scanning or attached
+    bool attached = m_attached;
+    if (attached || m_state == STARTUP || m_state == SCANNING)
         {
         hipEventRecord(m_stop, 0);
         hipEventSynchronize(m_stop);
         hipEventElapsedTime(&sample, m_start, m_stop);
-        m_samples[m_current_element][m_current_sample] = sample;
+
+        if (! attached)
+            {
+            m_samples[m_current_element][m_current_sample] = sample;
+            }
+
         m_exec_conf->msg->notice(9) << "Autotuner " << m_name << ": t(" << m_current_param << "," << m_current_sample
-                                     << ") = " << m_samples[m_current_element][m_current_sample] << endl;
+                                     << ") = " << sample << endl;
 
         if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
             CHECK_CUDA_ERROR();
         }
     #endif
 
-    if (m_attached)
+    if (attached)
         {
         m_last_sample = sample;
 
-        // let tuner know we have a sample
-        m_have_timing = true;
+            {
+            std::lock_guard<std::mutex> lk(m_mutex);
 
-        // release the lock
-        m_lock.unlock();
+            // let tuner know we have a sample
+            m_have_timing = true;
+            }
 
         // signal that a new measurement is available
         m_cv.notify_one();
@@ -418,10 +426,35 @@ float Autotuner::measure(unsigned int param)
     return m;
     }
 
+void Autotuner::setOptimalParameter(unsigned int opt)
+    {
+    if (! m_attached)
+        {
+        throw std::runtime_error("The Autotuner is not attached. Cannot set optimal parameter value.\n");
+        }
+
+        {
+        std::lock_guard<std::mutex> lk(m_mutex);
+
+        // set the new parameter
+        m_current_param = opt;
+        m_have_param = true;
+
+        // prevent automatic retuning
+        m_attached = false;
+        m_enabled = false;
+        }
+
+    // signal that a new parameter is available, this unblocks a pending kernel launch
+    m_cv.notify_one();
+    }
+
+
 void export_Autotuner(py::module& m)
     {
-    py::class_<Autotuner>(m,"Autotuner")
-    .def(py::init< unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, const std::string&, std::shared_ptr<ExecutionConfiguration> >())
+    py::class_<Autotuner, std::shared_ptr<Autotuner> >(m,"Autotuner")
+    .def(py::init< unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, const std::string&,
+        std::shared_ptr<ExecutionConfiguration> >())
     .def("getParam", &Autotuner::getParam)
     .def("setEnabled", &Autotuner::setEnabled)
     .def("isComplete", &Autotuner::isComplete)
