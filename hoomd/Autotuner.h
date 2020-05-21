@@ -121,35 +121,7 @@ class PYBIND11_EXPORT Autotuner
         //! Enable/disable sampling
         /*! \param enabled true to enable sampling, false to disable it
         */
-        void setEnabled(bool enabled)
-            {
-            m_enabled = enabled;
-
-            if (!enabled)
-                {
-                m_exec_conf->msg->notice(6) << "Disable Autotuner " << m_name << std::endl;
-
-                if (!m_attached)
-                    {
-                    // if not complete, issue a warning
-                    if (!isComplete())
-                        {
-                        m_exec_conf->msg->notice(2) << "Disabling Autotuner " << m_name << " before initial scan completed!" << std::endl;
-                        }
-                    else
-                        {
-                        // ensure that we are in the idle state and have an up to date optimal parameter
-                        m_current_element = 0;
-                        m_state = IDLE;
-                        m_current_param = computeOptimalParameter();
-                        }
-                    }
-                }
-            else
-                {
-                m_exec_conf->msg->notice(6) << "Enable Autotuner " << m_name << std::endl;
-                }
-            }
+        void setEnabled(bool enabled);
 
         //! Test if initial sampling is complete
         /*! \returns true if the initial sampling run is complete
@@ -239,6 +211,7 @@ class PYBIND11_EXPORT Autotuner
         void attach()
             {
             m_attached = true;
+            m_have_param = false;
             }
 
         //! Set the optimal parameter value to use and detach

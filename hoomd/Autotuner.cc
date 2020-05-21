@@ -143,19 +143,54 @@ Autotuner::~Autotuner()
     #endif
     }
 
+/*! \param enabled true to enable sampling, false to disable it
+*/
+void Autotuner::setEnabled(bool enabled)
+    {
+    m_enabled = enabled;
+
+    if (!enabled)
+        {
+        m_exec_conf->msg->notice(6) << "Disable Autotuner " << m_name << std::endl;
+
+        if (!m_attached && !m_have_param)
+            {
+            // if not complete, issue a warning
+            if (!isComplete())
+                {
+                m_exec_conf->msg->notice(2) << "Disabling Autotuner " << m_name << " before initial scan completed!" << std::endl;
+                }
+            else
+                {
+                // ensure that we are in the idle state and have an up to date optimal parameter
+                m_current_element = 0;
+                m_state = IDLE;
+                m_current_param = computeOptimalParameter();
+                }
+            }
+        }
+    else
+        {
+        m_exec_conf->msg->notice(6) << "Enable Autotuner " << m_name << std::endl;
+        }
+    }
+
 void Autotuner::begin()
     {
+    bool enabled = m_enabled;
+    bool attached = m_attached;
+
     // skip if disabled
-    if (!m_enabled)
+    if (!enabled && !attached)
         return;
 
-    bool attached = m_attached;
     if (attached)
         {
         // wait until we have a new parameter value
         std::unique_lock<std::mutex> lk(m_mutex);
         m_cv.wait(lk, [=]{return m_have_param;});
-        m_have_param = false;
+        if (m_attached)
+            m_have_param = false;
         }
 
     #ifdef ENABLE_HIP
@@ -171,14 +206,16 @@ void Autotuner::begin()
 
 void Autotuner::end()
     {
-    // skip if disabled
-    if (!m_enabled)
-        return;
-
     float sample = 0.0f;
     #ifdef ENABLE_HIP
     // handle timing updates if scanning or attached
+    bool enabled = m_enabled;
     bool attached = m_attached;
+
+    // skip if disabled
+    if ((!enabled && !attached) || m_have_param)
+        return;
+
     if (attached || m_state == STARTUP || m_state == SCANNING)
         {
         hipEventRecord(m_stop, 0);
