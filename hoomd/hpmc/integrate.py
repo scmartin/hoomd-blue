@@ -1037,6 +1037,12 @@ class convex_polyhedron(mode_hpmc):
         nselect (int): (Override the automatic choice for the number of trial moves to perform in each cell.
         restore_state(bool): Restore internal state from initialization file when True. See :py:class:`mode_hpmc`
                              for a description of what state data restored. (added in version 2.2)
+        quasi2d(int): Run a quasi 2d simulation in three dimensions. This means
+                      that all moves will only occur in the XY plane. A value
+                      of 0 is False, a value of 1 indicates that out-of-plane
+                      rotations will be allowed but translations forbidden, and
+                      a value of 2 indicates that all rotations will be
+                      in-plane rotations.
 
     Convex polyhedron parameters:
 
@@ -1066,14 +1072,14 @@ class convex_polyhedron(mode_hpmc):
         mc.shape_param.set('B', vertices=[(0.05, 0.05, 0.05), (0.05, -0.05, -0.05), (-0.05, 0.05, -0.05), (-0.05, -0.05, 0.05)]);
         mc.set_fugacity('B',fugacity=3.0)
     """
-    def __init__(self, seed, d=0.1, a=0.1, move_ratio=0.5, nselect=4, restore_state=False):
+    def __init__(self, seed, d=0.1, a=0.1, move_ratio=0.5, nselect=4, restore_state=False, quasi2d=0):
 
         # initialize base class
         mode_hpmc.__init__(self);
 
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
-            self.cpp_integrator = _hpmc.IntegratorHPMCMonoConvexPolyhedron(hoomd.context.current.system_definition, seed);
+            self.cpp_integrator = _hpmc.IntegratorHPMCMonoConvexPolyhedron(hoomd.context.current.system_definition, seed, quasi2d);
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
