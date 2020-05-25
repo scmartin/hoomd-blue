@@ -6,6 +6,7 @@ from hoomd.hpmc import _hpmc
 from hoomd.hpmc import data
 from hoomd.integrate import _integrator
 from hoomd.comm import Communicator
+from .update import _grid_shift
 import hoomd
 import sys
 import json
@@ -726,12 +727,16 @@ class sphere(mode_hpmc):
         mode_hpmc.__init__(self);
 
         # initialize the reflected c++ class
+        self.grid_shift = None
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoSphere(hoomd.context.current.system_definition, seed)
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUSphere(hoomd.context.current.system_definition, cl_c, seed);
+            self.grid_shift = _grid_shift(self, seed)
 
         # set the default parameters
         setD(self.cpp_integrator,d);
@@ -807,10 +812,13 @@ class convex_polygon(mode_hpmc):
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoConvexPolygon(hoomd.context.current.system_definition, seed);
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUConvexPolygon(hoomd.context.current.system_definition, cl_c, seed);
+            self.grid_shift = _grid_shift(self, seed)
 
         # set default parameters
         setD(self.cpp_integrator,d);
@@ -885,10 +893,13 @@ class convex_spheropolygon(mode_hpmc):
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoSpheropolygon(hoomd.context.current.system_definition, seed);
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUSpheropolygon(hoomd.context.current.system_definition, cl_c, seed);
+            self.grid_shift = _grid_shift(self, seed)
 
         # set default parameters
         setD(self.cpp_integrator,d);
@@ -961,10 +972,13 @@ class simple_polygon(mode_hpmc):
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoSimplePolygon(hoomd.context.current.system_definition, seed);
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUSimplePolygon(hoomd.context.current.system_definition, cl_c, seed);
+            self.grid_shift = _grid_shift(self, seed)
 
         # set parameters
         setD(self.cpp_integrator,d);
@@ -1072,10 +1086,13 @@ class polyhedron(mode_hpmc):
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoPolyhedron(hoomd.context.current.system_definition, seed)
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUPolyhedron(hoomd.context.current.system_definition, cl_c, seed);
+            self.grid_shift = _grid_shift(self, seed)
 
         # set default parameters
         setD(self.cpp_integrator,d);
@@ -1150,10 +1167,13 @@ class convex_polyhedron(mode_hpmc):
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoConvexPolyhedron(hoomd.context.current.system_definition, seed);
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUConvexPolyhedron(hoomd.context.current.system_definition, cl_c, seed);
+            self.grid_shift = _grid_shift(self, seed)
 
         # set default parameters
         setD(self.cpp_integrator,d);
@@ -1256,10 +1276,13 @@ class faceted_ellipsoid(mode_hpmc):
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoFacetedEllipsoid(hoomd.context.current.system_definition, seed);
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUFacetedEllipsoid(hoomd.context.current.system_definition, cl_c, seed);
+            self.grid_shift = _grid_shift(self, seed)
 
         # set default parameters
         setD(self.cpp_integrator,d);
@@ -1380,11 +1403,14 @@ class sphinx(mode_hpmc):
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoSphinx(hoomd.context.current.system_definition, seed);
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
 
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUSphinx(hoomd.context.current.system_definition, cl_c, seed);
+            self.grid_shift = _grid_shift(self, seed)
 
         # set default parameters
         setD(self.cpp_integrator,d);
@@ -1453,10 +1479,13 @@ class convex_spheropolyhedron(mode_hpmc):
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoSpheropolyhedron(hoomd.context.current.system_definition, seed);
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUSpheropolyhedron(hoomd.context.current.system_definition, cl_c, seed);
+            self.grid_shift = _grid_shift(self, seed)
 
         # set default parameters
         setD(self.cpp_integrator,d);
@@ -1526,10 +1555,13 @@ class ellipsoid(mode_hpmc):
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoEllipsoid(hoomd.context.current.system_definition, seed);
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUEllipsoid(hoomd.context.current.system_definition, cl_c, seed);
+            self.grid_shift = _grid_shift(self, seed)
 
         # set default parameters
         setD(self.cpp_integrator,d);
@@ -1611,10 +1643,13 @@ class sphere_union(mode_hpmc):
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoSphereUnion(hoomd.context.current.system_definition, seed)
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUSphereUnion(hoomd.context.current.system_definition, cl_c, seed)
+            self.grid_shift = _grid_shift(self, seed)
 
         # set default parameters
         setD(self.cpp_integrator,d);
@@ -1673,10 +1708,13 @@ class convex_spheropolyhedron_union(mode_hpmc):
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoConvexPolyhedronUnion(hoomd.context.current.system_definition, seed)
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUConvexPolyhedronUnion(hoomd.context.current.system_definition, cl_c, seed)
+            self.grid_shift = _grid_shift(self, seed)
 
         # set default parameters
         setD(self.cpp_integrator,d);
@@ -1744,10 +1782,13 @@ class faceted_ellipsoid_union(mode_hpmc):
         # initialize the reflected c++ class
         if not hoomd.context.current.device.cpp_exec_conf.isCUDAEnabled():
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoFacetedEllipsoidUnion(hoomd.context.current.system_definition, seed)
+            if hoomd.context.current.device.comm.num_ranks > 1:
+                self.grid_shift = _grid_shift(self, seed)
         else:
             cl_c = _hoomd.CellListGPU(hoomd.context.current.system_definition);
             hoomd.context.current.system.overwriteCompute(cl_c, "auto_cl2")
             self.cpp_integrator = _hpmc.IntegratorHPMCMonoGPUFacetedEllipsoidUnion(hoomd.context.current.system_definition, cl_c, seed)
+            self.grid_shift = _grid_shift(self, seed)
 
         # set default parameters
         setD(self.cpp_integrator,d);
