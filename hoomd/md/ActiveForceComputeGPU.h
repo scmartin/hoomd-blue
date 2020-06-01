@@ -47,7 +47,6 @@ class PYBIND11_EXPORT ActiveForceComputeGPU : public ActiveForceCompute
         virtual void setConstraint();
 
         GPUArray<unsigned int>  m_groupTags; //! Stores list converting group index to global tag
-	EvaluatorConstraintManifold m_manifoldGPU;
     };
 
 //! Exports the ActiveForceComputeGPU Class to python
