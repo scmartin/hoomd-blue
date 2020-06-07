@@ -313,25 +313,21 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
             bool check_old = check_j_flag & 1;
             unsigned int check_j  = check_j_flag >> 1;
 
-            Scalar4 postype_j;
-            Scalar4 orientation_j;
-            vec3<Scalar> r_ij;
-
             // build shape i from shared memory
             Scalar3 pos_i = s_pos_group[check_group];
             unsigned int type_i = s_type_group[check_group];
             Shape shape_i(quat<Scalar>(s_orientation_group[check_group]), s_params[type_i]);
 
             // build shape j from global memory
-            postype_j = check_old ? d_postype[check_j] : d_trial_postype[check_j];
-            orientation_j = make_scalar4(1,0,0,0);
+            Scalar4 postype_j = check_old ? d_postype[check_j] : d_trial_postype[check_j];
+            Scalar4 orientation_j = make_scalar4(1,0,0,0);
             unsigned int type_j = __scalar_as_int(postype_j.w);
             Shape shape_j(quat<Scalar>(orientation_j), s_params[type_j]);
             if (shape_j.hasOrientation())
                 shape_j.orientation = check_old ? quat<Scalar>(d_orientation[check_j]) : quat<Scalar>(d_trial_orientation[check_j]);
 
             // put particle j into the coordinate system of particle i
-            r_ij = vec3<Scalar>(postype_j) - vec3<Scalar>(pos_i);
+            vec3<Scalar> r_ij = vec3<Scalar>(postype_j) - vec3<Scalar>(pos_i);
             r_ij = vec3<Scalar>(box.minImage(vec_to_scalar3(r_ij)));
 
             if (s_check_overlaps[overlap_idx(type_i, type_j)]
@@ -389,8 +385,6 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
         __syncthreads();
         } // end while (s_still_searching)
 
-    __syncthreads();
-
     if (valid_ptl && master && idx < max_num_clauses)
         {
         // the ith clause contains !x_i (or x_i, if rejected) and all literals that lead to x_i evaluating to true
@@ -400,6 +394,8 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
         else
             atomicMax(&s_max_num_literals, n + 1);
         }
+
+    __syncthreads();
 
     if (master && group == 0)
         {

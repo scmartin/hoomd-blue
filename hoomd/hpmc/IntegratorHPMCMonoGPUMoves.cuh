@@ -52,6 +52,7 @@ __global__ void hpmc_gen_moves(const Scalar4 *d_postype,
                            Scalar4 *d_trial_vel,
                            unsigned int *d_trial_move_type,
                            unsigned int *d_reject_out_of_cell,
+                           unsigned int *d_reject,
                            const typename Shape::param_type *d_params)
     {
     // load the per type pair parameters into shared memory
@@ -173,6 +174,7 @@ __global__ void hpmc_gen_moves(const Scalar4 *d_postype,
 
     // initialize reject flag
     d_reject_out_of_cell[idx] = reject;
+    d_reject[idx] = 0;
     }
 
 //! Kernel to update particle data and statistics after acceptance
@@ -189,6 +191,7 @@ __global__ void hpmc_update_pdata(Scalar4 *d_postype,
                                   const Scalar4 *d_trial_vel,
                                   const unsigned int *d_trial_move_type,
                                   const unsigned int *d_reject,
+                                  const unsigned int *d_reject_out_of_cell,
                                   const typename Shape::param_type *d_params)
     {
     // determine which update step we are handling
@@ -218,7 +221,7 @@ __global__ void hpmc_update_pdata(Scalar4 *d_postype,
         unsigned int move_type = d_trial_move_type[idx];
         bool move_active = move_type > 0;
         bool move_type_translate = move_type == 1;
-        bool accept = !d_reject[idx];
+        bool accept = !d_reject[idx] && !d_reject_out_of_cell[idx];
 
         unsigned int type_i = __scalar_as_int(d_postype[idx].w);
         Shape shape_i(quat<Scalar>(), d_params[type_i]);
@@ -254,17 +257,10 @@ __global__ void hpmc_update_pdata(Scalar4 *d_postype,
     // final tally into global mem
     if (threadIdx.x == 0)
         {
-        #if (__CUDA_ARCH__ >= 600)
-        atomicAdd_system(&d_counters->translate_accept_count, s_translate_accept_count);
-        atomicAdd_system(&d_counters->translate_reject_count, s_translate_reject_count);
-        atomicAdd_system(&d_counters->rotate_accept_count, s_rotate_accept_count);
-        atomicAdd_system(&d_counters->rotate_reject_count, s_rotate_reject_count);
-        #else
         atomicAdd(&d_counters->translate_accept_count, s_translate_accept_count);
         atomicAdd(&d_counters->translate_reject_count, s_translate_reject_count);
         atomicAdd(&d_counters->rotate_accept_count, s_rotate_accept_count);
         atomicAdd(&d_counters->rotate_reject_count, s_rotate_reject_count);
-        #endif
         }
     }
 } // end namespace kernel
@@ -324,6 +320,7 @@ void hpmc_gen_moves(const hpmc_args_t& args, const typename Shape::param_type *p
                                                                      args.d_trial_vel,
                                                                      args.d_trial_move_type,
                                                                      args.d_reject_out_of_cell,
+                                                                     args.d_reject_out,
                                                                      params
                                                                 );
         }
@@ -373,6 +370,7 @@ void hpmc_gen_moves(const hpmc_args_t& args, const typename Shape::param_type *p
                                                                      args.d_trial_vel,
                                                                      args.d_trial_move_type,
                                                                      args.d_reject_out_of_cell,
+                                                                     args.d_reject_out,
                                                                      params
                                                                 );
         }
@@ -412,6 +410,7 @@ void hpmc_update_pdata(const hpmc_update_args_t& args, const typename Shape::par
             args.d_trial_vel,
             args.d_trial_move_type,
             args.d_reject,
+            args.d_reject_out_of_cell,
             params);
         }
     }

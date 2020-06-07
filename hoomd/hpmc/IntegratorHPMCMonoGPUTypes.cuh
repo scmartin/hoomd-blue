@@ -179,6 +179,7 @@ struct hpmc_update_args_t
         const Scalar4 *_d_trial_vel,
         const unsigned int *_d_trial_move_type,
         const unsigned int *_d_reject,
+        const unsigned int *_d_reject_out_of_cell,
         const unsigned int _block_size)
         : d_postype(_d_postype),
           d_orientation(_d_orientation),
@@ -192,6 +193,7 @@ struct hpmc_update_args_t
           d_trial_vel(_d_trial_vel),
           d_trial_move_type(_d_trial_move_type),
           d_reject(_d_reject),
+          d_reject_out_of_cell(_d_reject_out_of_cell),
           block_size(_block_size)
      {}
 
@@ -208,6 +210,7 @@ struct hpmc_update_args_t
     const Scalar4 *d_trial_vel;
     const unsigned int *d_trial_move_type;
     const unsigned int *d_reject;
+    const unsigned int *d_reject_out_of_cell;
     const unsigned int block_size;
     };
 

@@ -252,11 +252,13 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         GlobalArray<unsigned int> m_req_n_literals;           //!< Requested  number of literals
 
         // temporary data structures for SAT solver
-        GlobalArray<unsigned int> m_watch;
-        GlobalVector<unsigned int> m_n_watch;
+        GlobalVector<unsigned int> m_watch;
         GlobalVector<unsigned int> m_state;
-        unsigned int m_max_n_watch;                           //!< Max number of clauses being watched
-        GlobalArray<unsigned int> m_req_n_watch;              //!< Requested max width of watch list
+        GlobalVector<unsigned int> m_next_clause;
+        GlobalVector<unsigned int> m_head;
+        GlobalVector<unsigned int> m_tail;
+        GlobalVector<unsigned int> m_next;
+        GlobalVector<unsigned int> m_h;
 
         GlobalVector<unsigned int> m_phi;
         GlobalVector<unsigned int> m_components;
@@ -414,16 +416,6 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
     m_max_n_clause = 0;
     m_max_num_clauses = 0;
 
-    GlobalArray<unsigned int>(1, this->m_exec_conf).swap(m_req_n_watch);
-    TAG_ALLOCATION(m_req_n_watch);
-
-        {
-        // reset req_n_watch flag
-        ArrayHandle<unsigned int> h_req_n_watch(m_req_n_watch, access_location::host, access_mode::overwrite);
-        *h_req_n_watch.data = 1;
-        }
-    m_max_n_watch = 0;
-
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_phi);
     TAG_ALLOCATION(m_phi);
 
@@ -450,14 +442,26 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
     GlobalArray<unsigned int>(1, this->m_exec_conf).swap(m_unsat);
     TAG_ALLOCATION(m_unsat);
 
-    GlobalArray<unsigned int>(1,this->m_exec_conf).swap(m_watch);
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_watch);
     TAG_ALLOCATION(m_watch);
-
-    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_n_watch);
-    TAG_ALLOCATION(m_n_watch);
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_state);
     TAG_ALLOCATION(m_state);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_next_clause);
+    TAG_ALLOCATION(m_next_clause);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_head);
+    TAG_ALLOCATION(m_head);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_tail);
+    TAG_ALLOCATION(m_tail);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_next);
+    TAG_ALLOCATION(m_next);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_h);
+    TAG_ALLOCATION(m_h);
 
     GlobalArray<unsigned int>(1, this->m_exec_conf).swap(m_req_len);
     TAG_ALLOCATION(m_req_len);
@@ -964,6 +968,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 { // ArrayHandle scope
                 ArrayHandle<unsigned int> d_update_order_by_ptl(m_update_order.get(), access_location::device, access_mode::read);
                 ArrayHandle<unsigned int> d_reject_out_of_cell(m_reject_out_of_cell, access_location::device, access_mode::overwrite);
+                ArrayHandle<unsigned int> d_reject(m_reject, access_location::device, access_mode::overwrite);
 
                 // access data for proposed moves
                 ArrayHandle<Scalar4> d_trial_postype(m_trial_postype, access_location::device, access_mode::overwrite);
@@ -1018,7 +1023,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     d_excell_size.data,
                     m_excell_list_indexer,
                     0, // d_reject_in
-                    0, // d_reject_out
+                    d_reject.data,
                     this->m_exec_conf->dev_prop,
                     this->m_pdata->getGPUPartition(),
                     0, // streams,
@@ -1087,114 +1092,124 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     }
                 this->m_exec_conf->endMultiGPU();
 
-                // ArrayHandle scope
-                ArrayHandle<unsigned int> d_update_order_by_ptl(m_update_order.get(), access_location::device, access_mode::read);
-                ArrayHandle<unsigned int> d_reject(m_reject, access_location::device, access_mode::read);
-                ArrayHandle<unsigned int> d_reject_out_of_cell(m_reject_out_of_cell, access_location::device, access_mode::read);
+                    {
+                    // ArrayHandle scope
+                    ArrayHandle<unsigned int> d_update_order_by_ptl(m_update_order.get(), access_location::device, access_mode::read);
+                    ArrayHandle<unsigned int> d_reject(m_reject, access_location::device, access_mode::read);
+                    ArrayHandle<unsigned int> d_reject_out_of_cell(m_reject_out_of_cell, access_location::device, access_mode::read);
 
-                // access data for proposed moves
-                ArrayHandle<Scalar4> d_trial_postype(m_trial_postype, access_location::device, access_mode::read);
-                ArrayHandle<Scalar4> d_trial_orientation(m_trial_orientation, access_location::device, access_mode::read);
-                ArrayHandle<Scalar4> d_trial_vel(m_trial_vel, access_location::device, access_mode::read);
-                ArrayHandle<unsigned int> d_trial_move_type(m_trial_move_type, access_location::device, access_mode::read);
+                    // access data for proposed moves
+                    ArrayHandle<Scalar4> d_trial_postype(m_trial_postype, access_location::device, access_mode::read);
+                    ArrayHandle<Scalar4> d_trial_orientation(m_trial_orientation, access_location::device, access_mode::read);
+                    ArrayHandle<Scalar4> d_trial_vel(m_trial_vel, access_location::device, access_mode::read);
+                    ArrayHandle<unsigned int> d_trial_move_type(m_trial_move_type, access_location::device, access_mode::read);
 
-                // access the particle data
-                ArrayHandle<Scalar4> d_postype(this->m_pdata->getPositions(), access_location::device, access_mode::read);
-                ArrayHandle<Scalar4> d_orientation(this->m_pdata->getOrientationArray(), access_location::device, access_mode::read);
-                ArrayHandle<Scalar4> d_vel(this->m_pdata->getVelocities(), access_location::device, access_mode::read);
-                ArrayHandle<unsigned int> d_tag(this->m_pdata->getTags(), access_location::device, access_mode::read);
+                    // access the particle data
+                    ArrayHandle<Scalar4> d_postype(this->m_pdata->getPositions(), access_location::device, access_mode::read);
+                    ArrayHandle<Scalar4> d_orientation(this->m_pdata->getOrientationArray(), access_location::device, access_mode::read);
+                    ArrayHandle<Scalar4> d_vel(this->m_pdata->getVelocities(), access_location::device, access_mode::read);
+                    ArrayHandle<unsigned int> d_tag(this->m_pdata->getTags(), access_location::device, access_mode::read);
 
-                // MC counters
-                ArrayHandle<hpmc_counters_t> d_counters(this->m_count_total, access_location::device, access_mode::readwrite);
-                ArrayHandle<hpmc_counters_t> d_counters_per_device(this->m_counters, access_location::device, access_mode::readwrite);
+                    // MC counters
+                    ArrayHandle<hpmc_counters_t> d_counters(this->m_count_total, access_location::device, access_mode::readwrite);
+                    ArrayHandle<hpmc_counters_t> d_counters_per_device(this->m_counters, access_location::device, access_mode::readwrite);
 
-                // CNF
-                ArrayHandle<unsigned int> d_num_clauses(this->m_num_clauses, access_location::device, access_mode::readwrite);
-                ArrayHandle<unsigned int> d_clause(this->m_clause, access_location::device, access_mode::readwrite);
-                ArrayHandle<unsigned int> d_n_clause(this->m_n_clause, access_location::device, access_mode::readwrite);
-                ArrayHandle<unsigned int> d_req_n_literals(this->m_req_n_literals, access_location::device, access_mode::readwrite);
+                    // CNF
+                    ArrayHandle<unsigned int> d_num_clauses(this->m_num_clauses, access_location::device, access_mode::readwrite);
+                    ArrayHandle<unsigned int> d_clause(this->m_clause, access_location::device, access_mode::readwrite);
+                    ArrayHandle<unsigned int> d_n_clause(this->m_n_clause, access_location::device, access_mode::readwrite);
+                    ArrayHandle<unsigned int> d_req_n_literals(this->m_req_n_literals, access_location::device, access_mode::readwrite);
 
-                // depletant counters
-                ArrayHandle<hpmc_implicit_counters_t> d_implicit_count(this->m_implicit_count, access_location::device, access_mode::readwrite);
-                ArrayHandle<hpmc_implicit_counters_t> d_implicit_counters_per_device(this->m_implicit_counters, access_location::device, access_mode::readwrite);
+                    // depletant counters
+                    ArrayHandle<hpmc_implicit_counters_t> d_implicit_count(this->m_implicit_count, access_location::device, access_mode::readwrite);
+                    ArrayHandle<hpmc_implicit_counters_t> d_implicit_counters_per_device(this->m_implicit_counters, access_location::device, access_mode::readwrite);
 
-                // depletants
-                ArrayHandle<unsigned int> d_n_depletants(m_n_depletants, access_location::device, access_mode::overwrite);
-                ArrayHandle<unsigned int> d_n_depletants_ntrial(m_n_depletants_ntrial, access_location::device, access_mode::overwrite);
+                    // depletants
+                    ArrayHandle<unsigned int> d_n_depletants(m_n_depletants, access_location::device, access_mode::overwrite);
+                    ArrayHandle<unsigned int> d_n_depletants_ntrial(m_n_depletants_ntrial, access_location::device, access_mode::overwrite);
 
-                // reset counters
-                hipMemsetAsync(d_n_clause.data, 0, sizeof(unsigned int)*m_n_clause.getNumElements());
-                hipMemsetAsync(d_num_clauses.data, 0, sizeof(unsigned int));
+                    // reset counters
+                    if (m_n_clause.getNumElements())
+                        hipMemsetAsync(d_n_clause.data, 0, sizeof(unsigned int)*m_n_clause.getNumElements());
+                    hipMemsetAsync(d_num_clauses.data, 0, sizeof(unsigned int));
 
-                // fill the parameter structure for the GPU kernels
-                gpu::hpmc_args_t args(
-                    d_postype.data,
-                    d_orientation.data,
-                    d_vel.data,
-                    ngpu > 1 ? d_counters_per_device.data : d_counters.data,
-                    this->m_counters.getPitch(),
-                    this->m_cl->getCellIndexer(),
-                    this->m_cl->getDim(),
-                    ghost_width,
-                    this->m_pdata->getN(),
-                    this->m_pdata->getNTypes(),
-                    this->m_seed,
-                    d_d.data,
-                    d_a.data,
-                    d_overlaps.data,
-                    this->m_overlap_idx,
-                    this->m_move_ratio,
-                    timestep,
-                    this->m_sysdef->getNDimensions(),
-                    box,
-                    this->m_exec_conf->getRank()*this->m_nselect + i,
-                    ghost_fraction,
-                    domain_decomposition,
-                    0, // block size
-                    0, // tpp
-                    0, // overlap threads
-                    have_auxilliary_variables,
-                    d_reject_out_of_cell.data,
-                    d_trial_postype.data,
-                    d_trial_orientation.data,
-                    d_trial_vel.data,
-                    d_trial_move_type.data,
-                    d_update_order_by_ptl.data,
-                    d_excell_idx.data,
-                    d_excell_size.data,
-                    m_excell_list_indexer,
-                    d_reject.data,
-                    0, // reject_out
-                    this->m_exec_conf->dev_prop,
-                    this->m_pdata->getGPUPartition(),
-                    &m_narrow_phase_streams.front(),
-                    d_num_clauses.data,
-                    m_max_num_clauses,
-                    d_clause.data,
-                    d_n_clause.data,
-                    m_max_n_clause,
-                    d_req_n_literals.data);
+                    // fill the parameter structure for the GPU kernels
+                    gpu::hpmc_args_t args(
+                        d_postype.data,
+                        d_orientation.data,
+                        d_vel.data,
+                        ngpu > 1 ? d_counters_per_device.data : d_counters.data,
+                        this->m_counters.getPitch(),
+                        this->m_cl->getCellIndexer(),
+                        this->m_cl->getDim(),
+                        ghost_width,
+                        this->m_pdata->getN(),
+                        this->m_pdata->getNTypes(),
+                        this->m_seed,
+                        d_d.data,
+                        d_a.data,
+                        d_overlaps.data,
+                        this->m_overlap_idx,
+                        this->m_move_ratio,
+                        timestep,
+                        this->m_sysdef->getNDimensions(),
+                        box,
+                        this->m_exec_conf->getRank()*this->m_nselect + i,
+                        ghost_fraction,
+                        domain_decomposition,
+                        0, // block size
+                        0, // tpp
+                        0, // overlap threads
+                        have_auxilliary_variables,
+                        d_reject_out_of_cell.data,
+                        d_trial_postype.data,
+                        d_trial_orientation.data,
+                        d_trial_vel.data,
+                        d_trial_move_type.data,
+                        d_update_order_by_ptl.data,
+                        d_excell_idx.data,
+                        d_excell_size.data,
+                        m_excell_list_indexer,
+                        d_reject.data,
+                        0, // reject_out
+                        this->m_exec_conf->dev_prop,
+                        this->m_pdata->getGPUPartition(),
+                        &m_narrow_phase_streams.front(),
+                        d_num_clauses.data,
+                        m_max_num_clauses,
+                        d_clause.data,
+                        d_n_clause.data,
+                        m_max_n_clause,
+                        d_req_n_literals.data);
 
-                /*
-                 *  check overlaps, new configuration simultaneously against the old and the new configuration
-                 */
+                    /*
+                     *  check overlaps, new configuration simultaneously against the old and the new configuration
+                     */
 
-                this->m_exec_conf->beginMultiGPU();
+                    this->m_exec_conf->beginMultiGPU();
+                    m_tuner_narrow->begin();
+                    unsigned int param = m_tuner_narrow->getParam();
+                    args.block_size = param/1000000;
+                    args.tpp = (param%1000000)/100;
+                    args.overlap_threads = param%100;
+                    gpu::hpmc_narrow_phase<Shape>(args, params.data());
+                    if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
+                        CHECK_CUDA_ERROR();
+                    m_tuner_narrow->end();
+                    this->m_exec_conf->endMultiGPU();
+                    }
 
-                m_tuner_narrow->begin();
-                unsigned int param = m_tuner_narrow->getParam();
-                args.block_size = param/1000000;
-                args.tpp = (param%1000000)/100;
-                args.overlap_threads = param%100;
-                gpu::hpmc_narrow_phase<Shape>(args, params.data());
-                if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
-                    CHECK_CUDA_ERROR();
-                m_tuner_narrow->end();
+                // need to resize memory?
+                reallocate = checkReallocate();
+                if (reallocate)
+                   continue;
 
                 #if 0
                 /*
                  * Insert depletants
                  */
+
+                this->m_exec_conf->beginMultiGPU();
 
                 unsigned int ntrial_offset = 0;
 
@@ -1430,8 +1445,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     continue; // rerun kernels
                     }
                #endif
-
-               reallocate = checkReallocate();
                } // end while (reallocate)
 
            #if 0
@@ -1656,36 +1669,45 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     }
 
                 // max allocate watch list: number of literals times number of clauses (later, per component)
-                m_n_watch.resize(nliterals);
+                m_watch.resize(nliterals);
+                m_next_clause.resize(nclauses);
+                m_head.resize(n_components);
+                m_tail.resize(n_components);
+                m_next.resize(nvariables);
+                m_h.resize(nvariables);
                 m_state.resize(nvariables);
 
                 // temporary variables for solver
                 ArrayHandle<unsigned int> d_watch(m_watch, access_location::device, access_mode::overwrite);
-                ArrayHandle<unsigned int> d_n_watch(m_n_watch, access_location::device, access_mode::overwrite);
-                ArrayHandle<unsigned int> d_reject(m_reject, access_location::device, access_mode::overwrite);
+                ArrayHandle<unsigned int> d_next_clause(m_next_clause, access_location::device, access_mode::overwrite);
+                ArrayHandle<unsigned int> d_head(m_head, access_location::device, access_mode::overwrite);
+                ArrayHandle<unsigned int> d_tail(m_tail, access_location::device, access_mode::overwrite);
+                ArrayHandle<unsigned int> d_next(m_next, access_location::device, access_mode::overwrite);
+                ArrayHandle<unsigned int> d_h(m_h, access_location::device, access_mode::overwrite);
                 ArrayHandle<unsigned int> d_state(m_state, access_location::device, access_mode::overwrite);
+                ArrayHandle<unsigned int> d_reject(m_reject, access_location::device, access_mode::overwrite);
 
                 done = true;
 
                     {
                     ArrayHandle<unsigned int> d_unsat(m_unsat, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_req_n_watch(m_req_n_watch, access_location::device, access_mode::readwrite);
 
                     unsigned int block_size = 512;
-
                     gpu::solve_sat(
-                        m_max_n_watch,
                         d_watch.data,
-                        d_n_watch.data,
+                        d_next_clause.data,
+                        d_head.data,
+                        d_tail.data,
+                        d_next.data,
+                        d_h.data,
+                        d_state.data,
                         m_max_n_clause,
                         d_clause.data,
                         d_n_clause.data,
                         d_reject.data,
-                        d_state.data,
                         nvariables,
                         nclauses,
                         d_unsat.data,
-                        d_req_n_watch.data,
                         d_phi.data,
                         n_components,
                         d_component_begin.data,
@@ -1698,16 +1720,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
 
                     {
                     ArrayHandle<unsigned int> h_unsat(m_unsat, access_location::host, access_mode::read);
-                    ArrayHandle<unsigned int> h_req_n_watch(m_req_n_watch, access_location::host, access_mode::read);
 
-                    if (*h_req_n_watch.data > m_max_n_watch)
-                        {
-                        m_max_n_watch = *h_req_n_watch.data;
-                        m_watch.resize(nliterals*m_max_n_watch);
-                        done = false;
-                        }
-
-                    if (done && *h_unsat.data)
+                    if (*h_unsat.data)
                         throw std::runtime_error("Acceptance failed, Boolean formula cannot be satisified.\n");
                     }
                 } while (!done);
@@ -1730,6 +1744,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
 
                 // flags
                 ArrayHandle<unsigned int> d_reject(m_reject, access_location::device, access_mode::read);
+                ArrayHandle<unsigned int> d_reject_out_of_cell(m_reject_out_of_cell, access_location::device, access_mode::read);
 
                 // Update the particle data and statistics
                 this->m_exec_conf->beginMultiGPU();
@@ -1747,6 +1762,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     d_trial_vel.data,
                     d_trial_move_type.data,
                     d_reject.data,
+                    d_reject_out_of_cell.data,
                     m_tuner_update_pdata->getParam()
                     );
                 gpu::hpmc_update_pdata<Shape>(args, params.data());
@@ -1988,16 +2004,25 @@ bool IntegratorHPMCMonoGPU< Shape >::checkReallocate()
 
     // every particle gets at least one clause
     unsigned int nclauses = this->m_pdata->getMaxN() + *h_num_clauses.data;
-    unsigned int req_maxn = *h_req_n_literals.data;
 
-    bool maxn_changed = false;
+    bool reallocate_clauses = nclauses > m_max_num_clauses;
+
+    if (reallocate_clauses)
+        {
+        this->m_exec_conf->msg->notice(9) << "hpmc resizing max number of clauses " << m_max_num_clauses << " -> " << nclauses << std::endl;
+        GlobalArray<unsigned int> n_clause(nclauses, this->m_exec_conf);
+        m_n_clause.swap(n_clause);
+        TAG_ALLOCATION(m_n_clause);
+        m_max_num_clauses = nclauses;
+        }
+
+    unsigned int req_maxn = *h_req_n_literals.data;
     if (req_maxn > m_max_n_clause)
         {
         m_max_n_clause = req_maxn;
-        maxn_changed = true;
         }
 
-    unsigned int req_size_clauses = m_max_n_clause*nclauses;
+    unsigned int req_size_clauses = m_max_n_clause*m_max_num_clauses;
 
     // resize
     bool reallocate = req_size_clauses > m_clause.getNumElements();
@@ -2007,19 +2032,9 @@ bool IntegratorHPMCMonoGPU< Shape >::checkReallocate()
 
         GlobalArray<unsigned int> clause(req_size_clauses, this->m_exec_conf);
         m_clause.swap(clause);
+        TAG_ALLOCATION(m_clause);
         }
-
-    bool reallocate_clauses = nclauses > m_max_num_clauses;
-
-    if (reallocate_clauses)
-        {
-        this->m_exec_conf->msg->notice(9) << "hpmc resizing max number of clauses " << m_max_num_clauses << " -> " << nclauses << std::endl;
-        GlobalArray<unsigned int> n_clause(nclauses, this->m_exec_conf);
-        m_n_clause.swap(n_clause);
-        m_max_num_clauses = nclauses;
-        }
-
-    return reallocate || reallocate_clauses || maxn_changed;
+    return reallocate || reallocate_clauses;
     }
 
 #ifdef ENABLE_MPI

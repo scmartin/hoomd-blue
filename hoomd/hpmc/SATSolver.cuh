@@ -29,25 +29,25 @@ void find_connected_components(
     const unsigned int block_size,
     CachedAllocator& alloc);
 
-
-// solve the satisfiability problem
-void solve_sat(const unsigned int maxn_watch,
-    unsigned int *d_watch,
-    unsigned int *d_n_watch,
+void solve_sat(unsigned int *d_watch,
+    unsigned int *d_next_clause,
+    unsigned int *d_head,
+    unsigned int *d_tail,
+    unsigned int *d_next,
+    unsigned int *d_h,
+    unsigned int *d_state,
     const unsigned int maxn_clause,
     const unsigned int *d_clause,
     const unsigned int *d_n_clause,
     unsigned int *d_assignment,
-    unsigned int *d_state,
     const unsigned int n_variables,
     const unsigned int n_clauses,
     unsigned int *d_unsat,
-    unsigned int *d_req_n_watch,
     const unsigned int *d_phi,
-    const unsigned int n_components,
+    unsigned int n_components,
     const unsigned int *d_component_begin,
     const unsigned int *d_component_end,
-    unsigned int block_size);
+    const unsigned int block_size);
 
 } //end namespace gpu
 } //end namespace hpm
