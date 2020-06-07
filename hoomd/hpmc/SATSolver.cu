@@ -11,6 +11,8 @@
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/iterator/discard_iterator.h>
 
+#include <cub/cub.cuh>
+
 #include "hoomd/extern/ECL.cuh"
 
 namespace hpmc {
@@ -373,7 +375,7 @@ __global__ void find_dependencies(
 } //end namespace kernel
 
 
-void find_connected_components(
+bool label_connected_components(
     const unsigned int n_clauses,
     const unsigned int maxn_clause,
     const unsigned int *d_clause,
@@ -385,6 +387,7 @@ void find_connected_components(
     unsigned int *d_csr_row_ptr,
     const unsigned int n_variables,
     unsigned int *d_phi,
+    unsigned int *d_phi_alt,
     unsigned int *d_components,
     unsigned int &n_components,
     unsigned int *d_work,
@@ -411,7 +414,7 @@ void find_connected_components(
     hipMemcpy(&nnz, d_n_elem, sizeof(unsigned int), hipMemcpyDeviceToHost);
 
     if (nnz > max_n_elem)
-        return;
+        return false;
 
     // COO -> CSR
     thrust::device_ptr<unsigned int> rowidx(d_rowidx);
@@ -449,25 +452,40 @@ void find_connected_components(
         devprop);
 
     // put first member of every component into phi
+    void *d_temp_storage = NULL;
+    size_t temp_storage_bytes = 0;
+
     thrust::device_ptr<unsigned int> phi(d_phi);
-    thrust::device_ptr<unsigned int> components(d_components);
     thrust::sequence(thrust::cuda::par(alloc),
         phi,
         phi + n_variables,
         0);
 
-    thrust::sort_by_key(
-        thrust::cuda::par(alloc),
-        components,
-        components + n_variables,
-        phi);
+    cub::DoubleBuffer<unsigned int> d_keys(d_components, d_work);
+    cub::DoubleBuffer<unsigned int> d_values(d_phi, d_phi_alt);
+    cub::DeviceRadixSort::SortPairs(d_temp_storage,
+        temp_storage_bytes,
+        d_keys,
+        d_values,
+        n_variables);
+
+    // allocate temp storage
+    d_temp_storage = alloc.allocate(temp_storage_bytes);
+    cub::DeviceRadixSort::SortPairs(d_temp_storage,
+        temp_storage_bytes,
+        d_keys,
+        d_values,
+        n_variables);
+    alloc.deallocate((char *)d_temp_storage);
 
     // find start and end for every component
     thrust::device_ptr<unsigned int> component_begin(d_component_begin);
+    thrust::device_ptr<unsigned int> keys(d_keys.Current());
+
     auto it = thrust::reduce_by_key(
         thrust::cuda::par(alloc),
-        components,
-        components + n_variables,
+        keys,
+        keys + n_variables,
         thrust::counting_iterator<unsigned int>(0),
         thrust::make_discard_iterator(),
         component_begin,
@@ -480,6 +498,8 @@ void find_connected_components(
     thrust::fill(component_begin + n_components,
                  component_begin + n_components + 1,
                  n_variables);
+
+    return d_values.selector != 0;
     }
 
 // solve the satisfiability problem

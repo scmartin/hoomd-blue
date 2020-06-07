@@ -261,6 +261,7 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         GlobalVector<unsigned int> m_h;
 
         GlobalVector<unsigned int> m_phi;
+        GlobalVector<unsigned int> m_phi_alt;
         GlobalVector<unsigned int> m_components;
         GlobalVector<unsigned int> m_component_begin;
         GlobalArray<unsigned int> m_rowidx;
@@ -416,6 +417,9 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_phi);
     TAG_ALLOCATION(m_phi);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_phi_alt);
+    TAG_ALLOCATION(m_phi_alt);
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_components);
     TAG_ALLOCATION(m_components);
@@ -1600,26 +1604,29 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 unsigned int nliterals = 2*nvariables;
 
                 m_phi.resize(nvariables);
+                m_phi_alt.resize(nvariables);
                 m_components.resize(nvariables);
                 m_component_begin.resize(nvariables+1);
                 m_csr_row_ptr.resize(nvariables+1);
                 m_work.resize(nvariables);
 
-                ArrayHandle<unsigned int> d_phi(m_phi, access_location::device, access_mode::overwrite);
                 ArrayHandle<unsigned int> d_component_begin(m_component_begin, access_location::device, access_mode::overwrite);
                 ArrayHandle<unsigned int> d_components(m_components, access_location::device, access_mode::overwrite);
 
                 unsigned int n_components = 0;
+                bool swap;
                     {
                     ArrayHandle<unsigned int> d_rowidx(m_rowidx, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_colidx(m_colidx, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_csr_row_ptr(m_csr_row_ptr, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_n_elem(m_n_elem, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_work(m_work, access_location::device, access_mode::overwrite);
+                    ArrayHandle<unsigned int> d_phi(m_phi, access_location::device, access_mode::overwrite);
+                    ArrayHandle<unsigned int> d_phi_alt(m_phi_alt, access_location::device, access_mode::overwrite);
 
                     // preprocessing
                     unsigned int block_size = 512;
-                    gpu::find_connected_components(
+                    swap = gpu::label_connected_components(
                         nclauses,
                         m_max_n_clause,
                         d_clause.data,
@@ -1631,6 +1638,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                         d_csr_row_ptr.data,
                         nvariables,
                         d_phi.data,
+                        d_phi_alt.data,
                         d_components.data,
                         n_components,
                         d_work.data,
@@ -1641,6 +1649,11 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
 
                     if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
                         CHECK_CUDA_ERROR();
+                    }
+
+                if (swap)
+                    {
+                    m_phi.swap(m_phi_alt);
                     }
 
                     {
@@ -1664,6 +1677,9 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 m_next.resize(nvariables);
                 m_h.resize(nvariables);
                 m_state.resize(nvariables);
+
+                // variables sorted by component
+                ArrayHandle<unsigned int> d_phi(m_phi, access_location::device, access_mode::overwrite);
 
                 // temporary variables for solver
                 ArrayHandle<unsigned int> d_watch(m_watch, access_location::device, access_mode::overwrite);

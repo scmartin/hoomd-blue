@@ -7,7 +7,7 @@ namespace hpmc {
 namespace gpu {
 
 // Label connected components
-void find_connected_components(
+bool label_connected_components(
     const unsigned int n_clauses,
     const unsigned int maxn_clause,
     const unsigned int *d_clause,
@@ -19,6 +19,7 @@ void find_connected_components(
     unsigned int *d_csr_row_ptr,
     const unsigned int n_variables,
     unsigned int *d_phi,
+    unsigned int *d_phi_alt,
     unsigned int *d_components,
     unsigned int &n_components,
     unsigned int *d_work,
