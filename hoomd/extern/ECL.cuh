@@ -45,8 +45,8 @@ inline void ecl_connected_components(const int nodes,
     const int edges,
     const int *d_nidx,
     const int* d_nlist,
-    const int *d_nstat,
-    const int *d_wl,
+    int *d_nstat,
+    int *d_wl,
     const hipDeviceProp_t& deviceProp);
 
 #include <stdlib.h>

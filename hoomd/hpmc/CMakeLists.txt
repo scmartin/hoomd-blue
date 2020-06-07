@@ -72,6 +72,7 @@ set(_hpmc_headers
     Moves.h
     OBB.h
     OBBTree.h
+    SATSolver.cuh
     ShapeConvexPolygon.h
     ShapeConvexPolyhedron.h
     ShapeEllipsoid.h
@@ -97,6 +98,7 @@ set(_hpmc_headers
 
 set(_hpmc_cu_sources IntegratorHPMCMonoGPU.cu
                      IntegratorHPMCMonoGPUDepletants.cu
+                     SATSolver.cu
                      UpdaterClustersGPU.cu
                      )
 

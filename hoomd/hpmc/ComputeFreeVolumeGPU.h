@@ -17,7 +17,7 @@ using namespace std;
 #include "IntegratorHPMCMono.h"
 #include "ComputeFreeVolume.h"
 #include "ComputeFreeVolumeGPU.cuh"
-#include "IntegratorHPMCMonoGPU.cuh"
+#include "IntegratorHPMCMonoGPUTypes.cuh"
 
 /*! \file ComputeFreeVolumeGPU.h
     \brief Defines the template class for an approximate free volume integration

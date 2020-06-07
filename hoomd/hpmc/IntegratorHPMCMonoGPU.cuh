@@ -70,12 +70,20 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
                            const unsigned int max_extra_bytes,
                            const unsigned int max_queue_size,
                            const unsigned int work_offset,
-                           const unsigned int nwork)
+                           const unsigned int nwork,
+                           unsigned int *d_num_clauses,
+                           const unsigned int max_num_clauses,
+                           unsigned int *d_clause,
+                           unsigned int *d_n_clause,
+                           const unsigned int max_n_clause,
+                           unsigned int *d_req_n_literals
+                           )
     {
     __shared__ unsigned int s_overlap_checks;
     __shared__ unsigned int s_overlap_err_count;
     __shared__ unsigned int s_queue_size;
     __shared__ unsigned int s_still_searching;
+    __shared__ unsigned int s_max_num_literals;
 
     unsigned int group = threadIdx.y;
     unsigned int offset = threadIdx.z;
@@ -93,7 +101,8 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
     unsigned int *s_queue_j =   (unsigned int*)(s_check_overlaps + overlap_idx.getNumElements());
     unsigned int *s_queue_gid = (unsigned int*)(s_queue_j + max_queue_size);
     unsigned int *s_type_group = (unsigned int*)(s_queue_gid + max_queue_size);
-    unsigned int *s_reject_group = (unsigned int*)(s_type_group + n_groups);
+    unsigned int *s_idx_group = (unsigned int *)(s_type_group + n_groups);
+    unsigned int *s_reject_group = (unsigned int *)(s_idx_group + n_groups);
 
         {
         // copy over parameters one int per thread for fast loads
@@ -136,23 +145,33 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
         s_overlap_err_count = 0;
         s_queue_size = 0;
         s_still_searching = 1;
+        s_max_num_literals = 0;
         }
 
-    bool active = true;
+    if (master)
+        s_reject_group[group] = 0;
+
+    bool valid_ptl = true;
     unsigned int idx = blockIdx.x*n_groups+group;
     if (idx >= nwork)
-        active = false;
+        valid_ptl = false;
     idx += work_offset;
+
+    // if this particle is rejected a priori because it has left the cell, don't check overlaps
+    // and avoid out of range memory access when computing the cell
+    bool active = valid_ptl;
+    if (active && d_reject_out_of_cell[idx])
+        {
+        if (master)
+            s_reject_group[group] = 1;
+
+        active = false;
+        }
 
     unsigned int my_cell;
 
     unsigned int overlap_checks = 0;
     unsigned int overlap_err_count = 0;
-
-    // if this particle is rejected a priori because it has left the cell, don't check overlaps
-    // and avoid out of range memory access when computing the cell
-    if (active && d_reject_out_of_cell[idx])
-        active = false;
 
     unsigned int update_order_i;
     if (active)
@@ -174,18 +193,12 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
             s_pos_group[group] = make_scalar3(pos_i.x, pos_i.y, pos_i.z);
             s_type_group[group] = type_i;
             s_orientation_group[group] = d_trial_orientation[idx];
+            s_idx_group[group] = idx;
             }
         }
 
-    if (master && active)
-        {
-        // load from output, this race condition is intentional and implements an
-        // optional early exit flag between concurrently running kernels
-        s_reject_group[group] = atomicCAS(&d_reject_out[idx], 0, 0);
-        }
-
-     // sync so that s_postype_group and s_orientation are available before other threads might process overlap checks
-     __syncthreads();
+    // sync so that s_postype_group and s_orientation are available before other threads might process overlap checks
+    __syncthreads();
 
     // counters to track progress through the loop over potential neighbors
     unsigned int excell_size;
@@ -195,7 +208,7 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
     if (active)
         {
         excell_size = d_excell_size[my_cell];
-        overlap_checks += excell_size;
+        overlap_checks += 2*excell_size;
         }
 
     // loop while still searching
@@ -206,45 +219,44 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
         // loop through particles in the excell list and add them to the queue if they pass the circumsphere check
 
         // active threads add to the queue
-        if (active && !s_reject_group[group] && threadIdx.x == 0)
+        if (active && threadIdx.x == 0 && !s_reject_group[group])
             {
             // prefetch j
             unsigned int j, next_j = 0;
-            if (k < excell_size)
+            if (k < 2*excell_size)
                 {
-                next_j = __ldg(&d_excell_idx[excli(k, my_cell)]);
+                next_j = __ldg(&d_excell_idx[excli(k >> 1, my_cell)]);
                 }
 
             // add to the queue as long as the queue is not full, and we have not yet reached the end of our own list
             // and as long as no overlaps have been found
 
             // every thread can add at most one element to the neighbor list
-            while (s_queue_size < max_queue_size && k < excell_size)
+            while (s_queue_size < max_queue_size && k < 2*excell_size)
                 {
                 // build some shapes, but we only need them to get diameters, so don't load orientations
                 // build shape i from shared memory
                 vec3<Scalar> pos_i(s_pos_group[group]);
                 Shape shape_i(quat<Scalar>(), s_params[s_type_group[group]]);
 
+                bool old = k & 1;
 
                 // prefetch next j
                 j = next_j;
                 k += group_size;
-                if (k < excell_size)
+                if (k < 2*excell_size)
                     {
-                    next_j = __ldg(&d_excell_idx[excli(k, my_cell)]);
+                    next_j = __ldg(&d_excell_idx[excli(k >> 1, my_cell)]);
                     }
 
                 // has j been updated? ghost particles are not updated
-
-                // these multiple gmem loads present a minor optimization opportunity for the future
-                bool j_has_been_updated = j < N_local &&
+                bool j_before_i = j < N_local &&
                     d_update_order_by_ptl[j] < update_order_i &&
-                    !d_reject_in[j] &&
-                    d_trial_move_type[j];
+                    d_trial_move_type[j] &&
+                    !d_reject_out_of_cell[j];
 
-                // true if particle j is in the old configuration
-                bool old = !j_has_been_updated;
+                if (!old && !j_before_i)
+                    continue; // no dependency
 
                 // check particle circumspheres
 
@@ -266,8 +278,8 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
 
                     if (insert_point < max_queue_size)
                         {
-                        s_queue_gid[insert_point] = group;
-                        s_queue_j[insert_point] = (j << 1) | (old ? 1 : 0);
+                        s_queue_gid[insert_point] = (group << 1) | j_before_i;
+                        s_queue_j[insert_point] = (j << 1) | old;
                         }
                     else
                         {
@@ -294,7 +306,9 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
         if (tidx_1d < min(s_queue_size, max_queue_size))
             {
             // need to extract the overlap check to perform out of the shared mem queue
-            unsigned int check_group = s_queue_gid[tidx_1d];
+            unsigned int check_group_flag = s_queue_gid[tidx_1d];
+            unsigned int check_group = check_group_flag >> 1;
+            bool j_before_i = check_group_flag & 1;
             unsigned int check_j_flag = s_queue_j[tidx_1d];
             bool check_old = check_j_flag & 1;
             unsigned int check_j  = check_j_flag >> 1;
@@ -323,7 +337,44 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
             if (s_check_overlaps[overlap_idx(type_i, type_j)]
                 && test_overlap(r_ij, shape_i, shape_j, overlap_err_count))
                 {
-                atomicAdd(&s_reject_group[check_group],1);
+                if (!j_before_i)
+                    {
+                    // the decision for j does not affect i
+                    atomicAdd(&s_reject_group[check_group],1);
+                    }
+                else
+                    {
+                    unsigned int i = s_idx_group[check_group];
+                    if (i < max_num_clauses && check_j < N_local)
+                        {
+                        // add the literal x_j to the ith clause, if j is not a ghost
+                        unsigned int n = atomicAdd_system(&d_n_clause[i], 1);
+
+                        if (n < max_n_clause)
+                            d_clause[i*max_n_clause + n] = (check_j << 1) | !check_old;
+                        else
+                            atomicMax(&s_max_num_literals, n + 1);
+                        }
+
+                    // add a clause with x_i v !x_j (j only if it is not a ghost)
+                    unsigned int m = atomicAdd_system(d_num_clauses, 1);
+                    if (N_local + m < max_num_clauses)
+                        {
+                        unsigned int n = atomicAdd(&d_n_clause[N_local+m], 1);
+                        if (n < max_n_clause)
+                            d_clause[(m+N_local)*max_n_clause+n] = i << 1;
+
+                        if (check_j < N_local)
+                            {
+                            n = atomicAdd_system(&d_n_clause[N_local+m], 1);
+                            if (n < max_n_clause)
+                                d_clause[(m+N_local)*max_n_clause+n] = (check_j << 1) | check_old;
+                            }
+
+                        if (n >= max_n_clause)
+                            atomicMax(&s_max_num_literals, n + 1);
+                        }
+                    }
                 }
             }
 
@@ -332,17 +383,30 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
         if (master && group == 0)
             s_queue_size = 0;
 
-        if (active && (threadIdx.x == 0) && !s_reject_group[group] && k < excell_size)
+        if (active && (threadIdx.x == 0) && !s_reject_group[group] && k < 2*excell_size)
             atomicAdd(&s_still_searching, 1);
 
         __syncthreads();
         } // end while (s_still_searching)
 
-    if (active && master)
+    __syncthreads();
+
+    if (valid_ptl && master && idx < max_num_clauses)
         {
-        // update reject flags in global mem
-        if (s_reject_group[group])
-            atomicAdd(&d_reject_out[idx], 1);
+        // the ith clause contains !x_i (or x_i, if rejected) and all literals that lead to x_i evaluating to true
+        unsigned int n = atomicAdd_system(&d_n_clause[idx], 1);
+        if (n < max_n_clause)
+            d_clause[idx*max_n_clause + n] = (idx << 1) | !s_reject_group[group];
+        else
+            atomicMax(&s_max_num_literals, n + 1);
+        }
+
+    if (master && group == 0)
+        {
+        unsigned int req_n_literals = s_max_num_literals;
+
+        if (s_max_num_literals > max_n_clause)
+            atomicMax(d_req_n_literals, req_n_literals);
         }
 
     if (master)
@@ -403,7 +467,7 @@ void narrow_phase_launcher(const hpmc_args_t& args, const typename Shape::param_
         const unsigned int min_shared_bytes = args.num_types * sizeof(typename Shape::param_type)
             + args.overlap_idx.getNumElements() * sizeof(unsigned int);
 
-        unsigned int shared_bytes = n_groups * (2*sizeof(unsigned int) + sizeof(Scalar4) + sizeof(Scalar3))
+        unsigned int shared_bytes = n_groups * (3*sizeof(unsigned int) + sizeof(Scalar4) + sizeof(Scalar3))
             + max_queue_size * 2 * sizeof(unsigned int)
             + min_shared_bytes;
 
@@ -426,7 +490,7 @@ void narrow_phase_launcher(const hpmc_args_t& args, const typename Shape::param_
             n_groups = run_block_size/(tpp*overlap_threads);
             max_queue_size = n_groups*tpp;
 
-            shared_bytes = n_groups * (2*sizeof(unsigned int) + sizeof(Scalar4) + sizeof(Scalar3))
+            shared_bytes = n_groups * (3*sizeof(unsigned int) + sizeof(Scalar4) + sizeof(Scalar3))
                 + max_queue_size * 2 * sizeof(unsigned int)
                 + min_shared_bytes;
             }
@@ -473,7 +537,9 @@ void narrow_phase_launcher(const hpmc_args_t& args, const typename Shape::param_
                 args.d_counters+idev*args.counters_pitch, args.num_types,
                 args.box, args.ghost_width, args.cell_dim, args.ci, args.N, args.d_check_overlaps,
                 args.overlap_idx, params, args.d_update_order_by_ptl, args.d_reject_in, args.d_reject_out, args.d_reject_out_of_cell,
-                max_extra_bytes, max_queue_size, range.first, nwork);
+                max_extra_bytes, max_queue_size, range.first, nwork,
+                args.d_num_clauses, args.max_num_clauses, args.d_clause, args.d_n_clause, args.max_n_clause,
+                args.d_req_n_literals);
             }
         }
     else
