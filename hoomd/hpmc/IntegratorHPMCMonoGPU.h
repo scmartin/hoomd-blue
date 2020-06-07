@@ -262,9 +262,7 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
 
         GlobalVector<unsigned int> m_phi;
         GlobalVector<unsigned int> m_components;
-        GlobalVector<unsigned int> m_unique_components;
         GlobalVector<unsigned int> m_component_begin;
-        GlobalVector<unsigned int> m_component_end;
         GlobalArray<unsigned int> m_rowidx;
         GlobalArray<unsigned int> m_colidx;
         GlobalVector<unsigned int> m_csr_row_ptr;
@@ -422,13 +420,8 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_components);
     TAG_ALLOCATION(m_components);
 
-    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_unique_components);
-    TAG_ALLOCATION(m_unique_components);
-
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_component_begin);
     TAG_ALLOCATION(m_component_begin);
-    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_component_end);
-    TAG_ALLOCATION(m_component_end);
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_csr_row_ptr);
     TAG_ALLOCATION(m_csr_row_ptr);
@@ -1608,15 +1601,12 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
 
                 m_phi.resize(nvariables);
                 m_components.resize(nvariables);
-                m_unique_components.resize(nvariables);
-                m_component_begin.resize(nvariables);
-                m_component_end.resize(nvariables);
+                m_component_begin.resize(nvariables+1);
                 m_csr_row_ptr.resize(nvariables+1);
                 m_work.resize(nvariables);
 
                 ArrayHandle<unsigned int> d_phi(m_phi, access_location::device, access_mode::overwrite);
                 ArrayHandle<unsigned int> d_component_begin(m_component_begin, access_location::device, access_mode::overwrite);
-                ArrayHandle<unsigned int> d_component_end(m_component_end, access_location::device, access_mode::overwrite);
                 ArrayHandle<unsigned int> d_components(m_components, access_location::device, access_mode::overwrite);
 
                 unsigned int n_components = 0;
@@ -1626,8 +1616,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     ArrayHandle<unsigned int> d_csr_row_ptr(m_csr_row_ptr, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_n_elem(m_n_elem, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_work(m_work, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_unique_components(m_unique_components, access_location::device, access_mode::overwrite);
 
+                    // preprocessing
                     unsigned int block_size = 512;
                     gpu::find_connected_components(
                         nclauses,
@@ -1644,9 +1634,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                         d_components.data,
                         n_components,
                         d_work.data,
-                        d_unique_components.data,
                         d_component_begin.data,
-                        d_component_end.data,
                         this->m_exec_conf->dev_prop,
                         block_size,
                         this->m_exec_conf->getCachedAllocator());
@@ -1711,7 +1699,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                         d_phi.data,
                         n_components,
                         d_component_begin.data,
-                        d_component_end.data,
                         block_size);
                     }
 

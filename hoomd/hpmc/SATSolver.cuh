@@ -22,9 +22,7 @@ void find_connected_components(
     unsigned int *d_components,
     unsigned int &n_components,
     unsigned int *d_work,
-    unsigned int *d_unique_components,
     unsigned int *d_component_begin,
-    unsigned int *d_component_end,
     const hipDeviceProp_t devprop,
     const unsigned int block_size,
     CachedAllocator& alloc);
@@ -46,7 +44,6 @@ void solve_sat(unsigned int *d_watch,
     const unsigned int *d_phi,
     unsigned int n_components,
     const unsigned int *d_component_begin,
-    const unsigned int *d_component_end,
     const unsigned int block_size);
 
 } //end namespace gpu

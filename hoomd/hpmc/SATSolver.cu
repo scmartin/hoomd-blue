@@ -294,7 +294,6 @@ __global__ void setup_active_ring(
     const unsigned int *d_variables,
     const unsigned int n_components,
     const unsigned int *d_component_begin,
-    const unsigned int *d_component_end,
     unsigned int *d_head,
     unsigned int *d_tail,
     unsigned int *d_next)
@@ -305,7 +304,7 @@ __global__ void setup_active_ring(
         return;
 
     unsigned int component_start = d_component_begin[component];
-    unsigned int component_end = d_component_end[component];
+    unsigned int component_end = d_component_begin[component+1];
 
     unsigned int h = SAT_sentinel;
     unsigned int t = SAT_sentinel;
@@ -389,9 +388,7 @@ void find_connected_components(
     unsigned int *d_components,
     unsigned int &n_components,
     unsigned int *d_work,
-    unsigned int *d_unique_components,
     unsigned int *d_component_begin,
-    unsigned int *d_component_end,
     const hipDeviceProp_t devprop,
     const unsigned int block_size,
     CachedAllocator &alloc)
@@ -454,10 +451,10 @@ void find_connected_components(
     // put first member of every component into phi
     thrust::device_ptr<unsigned int> phi(d_phi);
     thrust::device_ptr<unsigned int> components(d_components);
-    thrust::counting_iterator<unsigned int> variables_begin(0);
-    thrust::copy(variables_begin,
-                 variables_begin + n_variables,
-                 phi);
+    thrust::sequence(thrust::cuda::par(alloc),
+        phi,
+        phi + n_variables,
+        0);
 
     thrust::sort_by_key(
         thrust::cuda::par(alloc),
@@ -465,34 +462,24 @@ void find_connected_components(
         components + n_variables,
         phi);
 
-    thrust::device_ptr<unsigned int> unique_components(d_unique_components);
+    // find start and end for every component
+    thrust::device_ptr<unsigned int> component_begin(d_component_begin);
     auto it = thrust::reduce_by_key(
         thrust::cuda::par(alloc),
         components,
         components + n_variables,
-        thrust::constant_iterator<unsigned int>(1),
-        unique_components,
-        thrust::make_discard_iterator());
+        thrust::counting_iterator<unsigned int>(0),
+        thrust::make_discard_iterator(),
+        component_begin,
+        thrust::equal_to<unsigned int>(),
+        thrust::minimum<unsigned int>());
 
-    n_components = it.first - unique_components;
+    n_components = it.second - component_begin;
 
-    // find start and end for every component
-    thrust::device_ptr<unsigned int> component_begin(d_component_begin);
-    thrust::device_ptr<unsigned int> component_end(d_component_end);
-    thrust::lower_bound(
-        thrust::cuda::par(alloc),
-        components,
-        components + n_variables,
-        unique_components,
-        unique_components + n_components,
-        component_begin);
-    thrust::upper_bound(
-        thrust::cuda::par(alloc),
-        components,
-        components + n_variables,
-        unique_components,
-        unique_components + n_components,
-        component_end);
+    // set the last element
+    thrust::fill(component_begin + n_components,
+                 component_begin + n_components + 1,
+                 n_variables);
     }
 
 // solve the satisfiability problem
@@ -513,7 +500,6 @@ void solve_sat(unsigned int *d_watch,
     const unsigned int *d_phi,
     unsigned int n_components,
     const unsigned int *d_component_begin,
-    const unsigned int *d_component_end,
     const unsigned int block_size)
     {
     hipMemsetAsync(d_unsat, 0, sizeof(unsigned int));
@@ -537,7 +523,6 @@ void solve_sat(unsigned int *d_watch,
         d_phi,
         n_components,
         d_component_begin,
-        d_component_end,
         d_head,
         d_tail,
         d_next);
