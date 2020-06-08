@@ -12,6 +12,7 @@ void identify_connected_components(
     const unsigned int *d_clause,
     const unsigned int *d_n_clause,
     unsigned int *d_n_elem,
+    unsigned int &n_elem,
     const unsigned int max_n_elem,
     unsigned int *d_rowidx,
     unsigned int *d_rowidx_alt,

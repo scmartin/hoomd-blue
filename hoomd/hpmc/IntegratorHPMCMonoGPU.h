@@ -1601,6 +1601,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 ArrayHandle<unsigned int> d_clause(this->m_clause, access_location::device, access_mode::read);
                 ArrayHandle<unsigned int> d_n_clause(this->m_n_clause, access_location::device, access_mode::read);
 
+                unsigned int n_elem = 0;
+
                     {
                     ArrayHandle<unsigned int> d_rowidx(m_rowidx, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_colidx(m_colidx, access_location::device, access_mode::overwrite);
@@ -1619,6 +1621,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                         d_clause.data,
                         d_n_clause.data,
                         d_n_elem.data,
+                        n_elem,
                         m_rowidx.getNumElements(),
                         d_rowidx.data,
                         d_rowidx_alt.data,
@@ -1636,21 +1639,17 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                         CHECK_CUDA_ERROR();
                     }
 
+                if (n_elem > m_rowidx.getNumElements())
                     {
-                    ArrayHandle<unsigned int> h_n_elem(m_n_elem, access_location::host, access_mode::read);
-
-                    if (*h_n_elem.data > m_rowidx.getNumElements())
-                        {
-                        GlobalArray<unsigned int>(*h_n_elem.data, this->m_exec_conf).swap(m_rowidx);
-                        TAG_ALLOCATION(m_rowidx);
-                        GlobalArray<unsigned int>(*h_n_elem.data, this->m_exec_conf).swap(m_rowidx_alt);
-                        TAG_ALLOCATION(m_rowidx_alt);
-                        GlobalArray<unsigned int>(*h_n_elem.data, this->m_exec_conf).swap(m_colidx);
-                        TAG_ALLOCATION(m_colidx);
-                        GlobalArray<unsigned int>(*h_n_elem.data, this->m_exec_conf).swap(m_colidx_alt);
-                        TAG_ALLOCATION(m_colidx_alt);
-                        continue;
-                        }
+                    GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_rowidx);
+                    TAG_ALLOCATION(m_rowidx);
+                    GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_rowidx_alt);
+                    TAG_ALLOCATION(m_rowidx_alt);
+                    GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_colidx);
+                    TAG_ALLOCATION(m_colidx);
+                    GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_colidx_alt);
+                    TAG_ALLOCATION(m_colidx_alt);
+                    continue;
                     }
 
                 done = true;
@@ -1710,9 +1709,9 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     CHECK_CUDA_ERROR();
                 }
 
+            if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
                 {
                 ArrayHandle<unsigned int> h_unsat(m_unsat, access_location::host, access_mode::read);
-
                 if (*h_unsat.data)
                     throw std::runtime_error("Acceptance failed, Boolean formula cannot be satisified.\n");
                 }

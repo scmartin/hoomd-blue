@@ -421,6 +421,7 @@ void identify_connected_components(
     const unsigned int *d_clause,
     const unsigned int *d_n_clause,
     unsigned int *d_n_elem,
+    unsigned int &n_elem,
     const unsigned int max_n_elem,
     unsigned int *d_rowidx,
     unsigned int *d_rowidx_alt,
@@ -448,10 +449,9 @@ void identify_connected_components(
         max_n_elem);
 
     // construct a CSR matrix
-    unsigned int nnz;
-    hipMemcpy(&nnz, d_n_elem, sizeof(unsigned int), hipMemcpyDeviceToHost);
+    hipMemcpy(&n_elem, d_n_elem, sizeof(unsigned int), hipMemcpyDeviceToHost);
 
-    if (nnz > max_n_elem)
+    if (n_elem > max_n_elem)
         return;
 
     // COO -> CSR
@@ -464,14 +464,14 @@ void identify_connected_components(
         temp_storage_bytes,
         d_keys,
         d_values,
-        nnz);
+        n_elem);
     d_temp_storage = alloc.allocate(temp_storage_bytes);
     cub::DeviceRadixSort::SortPairs(
         d_temp_storage,
         temp_storage_bytes,
         d_keys,
         d_values,
-        nnz);
+        n_elem);
     alloc.deallocate((char *)d_temp_storage);
 
     thrust::device_ptr<unsigned int> rowidx(d_keys.Current());
@@ -480,7 +480,7 @@ void identify_connected_components(
     thrust::lower_bound(
         thrust::cuda::par(alloc),
         rowidx,
-        rowidx + nnz,
+        rowidx + n_elem,
         rows_begin,
         rows_begin + n_variables + 1,
         csr_row_ptr);
@@ -488,7 +488,7 @@ void identify_connected_components(
     // find connected components
     ecl_connected_components(
         n_variables,
-        nnz,
+        n_elem,
         (const int *) d_csr_row_ptr,
         (const int *) d_values.Current(),
         (int *) d_component_ptr,
