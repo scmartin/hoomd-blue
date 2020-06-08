@@ -262,10 +262,10 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         GlobalVector<unsigned int> m_component_ptr;
         GlobalVector<unsigned int> m_representative;
         GlobalArray<unsigned int> m_heap;
-        GlobalArray<unsigned int> m_rowidx;
-        GlobalArray<unsigned int> m_colidx;
-        GlobalArray<unsigned int> m_rowidx_alt;
-        GlobalArray<unsigned int> m_colidx_alt;
+        GlobalVector<unsigned int> m_row_counters;
+        GlobalVector<unsigned int> m_row_head;
+        GlobalVector<unsigned int> m_row_next;
+        GlobalVector<unsigned int> m_colidx;
         GlobalVector<unsigned int> m_csr_row_ptr;
         GlobalArray<unsigned int> m_n_elem;
         GlobalVector<unsigned int> m_work;
@@ -423,6 +423,18 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
 
     GlobalArray<unsigned int>(1, this->m_exec_conf).swap(m_heap);
     TAG_ALLOCATION(m_heap);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_row_counters);
+    TAG_ALLOCATION(m_row_counters);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_row_head);
+    TAG_ALLOCATION(m_row_head);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_row_next);
+    TAG_ALLOCATION(m_row_next);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_colidx);
+    TAG_ALLOCATION(m_colidx);
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_csr_row_ptr);
     TAG_ALLOCATION(m_csr_row_ptr);
@@ -1585,8 +1597,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 } // end patch energy
             #endif
 
-            bool done = false;
-
             ArrayHandle<unsigned int> h_num_clauses(this->m_num_clauses, access_location::host, access_mode::read);
             unsigned int nclauses = this->m_pdata->getN() + *h_num_clauses.data;
             unsigned int nvariables = this->m_pdata->getN();
@@ -1594,67 +1604,45 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             m_component_ptr.resize(nvariables);
             m_csr_row_ptr.resize(nvariables+1);
             m_work.resize(nvariables);
+            m_row_counters.resize(nvariables);
+            m_row_head.resize(nvariables);
+            m_row_next.resize(nclauses*m_max_n_clause*m_max_n_clause);
+            m_colidx.resize(nclauses*m_max_n_clause*m_max_n_clause);
 
-            do
-                {
-                // CNF
-                ArrayHandle<unsigned int> d_clause(this->m_clause, access_location::device, access_mode::read);
-                ArrayHandle<unsigned int> d_n_clause(this->m_n_clause, access_location::device, access_mode::read);
+            // CNF
+            ArrayHandle<unsigned int> d_clause(this->m_clause, access_location::device, access_mode::read);
+            ArrayHandle<unsigned int> d_n_clause(this->m_n_clause, access_location::device, access_mode::read);
 
-                unsigned int n_elem = 0;
+            ArrayHandle<unsigned int> d_row_counters(m_row_counters, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_row_head(m_row_head, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_row_next(m_row_next, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_colidx(m_colidx, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_csr_row_ptr(m_csr_row_ptr, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_n_elem(m_n_elem, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_work(m_work, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_component_ptr(m_component_ptr, access_location::device, access_mode::overwrite);
 
-                    {
-                    ArrayHandle<unsigned int> d_rowidx(m_rowidx, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_colidx(m_colidx, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_rowidx_alt(m_rowidx_alt, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_colidx_alt(m_colidx_alt, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_csr_row_ptr(m_csr_row_ptr, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_n_elem(m_n_elem, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_work(m_work, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_component_ptr(m_component_ptr, access_location::device, access_mode::overwrite);
+            // preprocessing
+            unsigned int block_size = 512;
+            gpu::identify_connected_components(
+                nclauses,
+                m_max_n_clause,
+                d_clause.data,
+                d_n_clause.data,
+                d_row_counters.data,
+                d_row_head.data,
+                d_row_next.data,
+                d_csr_row_ptr.data,
+                d_colidx.data,
+                nvariables,
+                d_component_ptr.data,
+                d_work.data,
+                this->m_exec_conf->dev_prop,
+                block_size,
+                this->m_exec_conf->getCachedAllocator());
 
-                    // preprocessing
-                    unsigned int block_size = 512;
-                    gpu::identify_connected_components(
-                        nclauses,
-                        m_max_n_clause,
-                        d_clause.data,
-                        d_n_clause.data,
-                        d_n_elem.data,
-                        n_elem,
-                        m_rowidx.getNumElements(),
-                        d_rowidx.data,
-                        d_rowidx_alt.data,
-                        d_colidx.data,
-                        d_colidx_alt.data,
-                        d_csr_row_ptr.data,
-                        nvariables,
-                        d_component_ptr.data,
-                        d_work.data,
-                        this->m_exec_conf->dev_prop,
-                        block_size,
-                        this->m_exec_conf->getCachedAllocator());
-
-                    if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
-                        CHECK_CUDA_ERROR();
-                    }
-
-                done = true;
-                if (n_elem > m_rowidx.getNumElements())
-                    {
-                    GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_rowidx);
-                    TAG_ALLOCATION(m_rowidx);
-                    GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_rowidx_alt);
-                    TAG_ALLOCATION(m_rowidx_alt);
-                    GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_colidx);
-                    TAG_ALLOCATION(m_colidx);
-                    GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_colidx_alt);
-                    TAG_ALLOCATION(m_colidx_alt);
-                    done = false;
-                    continue;
-                    }
-                }
-            while (!done);
+            if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
+                CHECK_CUDA_ERROR();
 
             // max allocate watch list: number of literals times number of clauses (later, per component)
             m_watch.resize(nliterals);
@@ -1664,13 +1652,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             m_h.resize(nvariables);
             m_state.resize(nvariables);
             m_representative.resize(nvariables);
-
-            // a pointer allowing traversal of connected components
-            ArrayHandle<unsigned int> d_component_ptr(m_component_ptr, access_location::device, access_mode::read);
-
-            // CNF
-            ArrayHandle<unsigned int> d_clause(this->m_clause, access_location::device, access_mode::read);
-            ArrayHandle<unsigned int> d_n_clause(this->m_n_clause, access_location::device, access_mode::read);
 
             // temporary variables for solver
             ArrayHandle<unsigned int> d_watch(m_watch, access_location::device, access_mode::overwrite);

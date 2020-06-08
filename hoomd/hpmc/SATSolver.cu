@@ -373,15 +373,14 @@ __global__ void initialize_components(
         }
     }
 
-__global__ void find_dependencies(
+__global__ void parse_clauses(
     const unsigned int n_clauses,
     const unsigned int *d_n_clause,
     const unsigned int *d_clause,
     const unsigned int maxn_clause,
-    unsigned int *d_n_elem,
-    unsigned int *d_rowidx,
-    unsigned int *d_colidx,
-    const unsigned int max_n_elem)
+    unsigned int *d_row_counters,
+    unsigned int *d_row_head,
+    unsigned int *d_row_next)
     {
     const unsigned int tidx = threadIdx.x + blockIdx.x*blockDim.x;
 
@@ -400,17 +399,46 @@ __global__ void find_dependencies(
             if (j == i)
                 continue;
 
-            unsigned int m = d_clause[tidx*maxn_clause+j];
-            unsigned int w = m >> 1;
+            // increment the row size
+            atomicAdd(&d_row_counters[v], 1);
 
-            // add dependency
-            unsigned int k = atomicAdd(d_n_elem, 1);
-            if (k < max_n_elem)
+            // link the clause index for this index pair to the row
+            unsigned int cidx = tidx*maxn_clause*maxn_clause+j*maxn_clause+i;
+            unsigned int p = atomicCAS(&d_row_head[v], SAT_sentinel, cidx);
+            while (p != SAT_sentinel)
                 {
-                d_rowidx[k] = v;
-                d_colidx[k] = w;
+                p = atomicCAS(&d_row_next[p], SAT_sentinel, cidx);
                 }
             }
+        }
+    }
+
+__global__ void flatten_rows(
+    const unsigned int maxn_clause,
+    const unsigned int *d_clause,
+    const unsigned int nrows,
+    const unsigned int *d_row_offset,
+    const unsigned int *d_row_head,
+    const unsigned int *d_row_next,
+    unsigned int *d_colidx)
+    {
+    const unsigned int tidx = threadIdx.x + blockIdx.x*blockDim.x;
+
+    if (tidx >= nrows)
+        return;
+
+    // insert the colum indices into the output array starting at offset, which is a prefix sum
+    unsigned int i = d_row_offset[tidx];
+
+    unsigned int p = d_row_head[tidx];
+    while (p != SAT_sentinel)
+        {
+        // load the associated variable
+        unsigned int v = d_clause[p / maxn_clause] >> 1;
+        d_colidx[i++] = v;
+
+        // look up the next column
+        p = d_row_next[p];
         }
     }
 
@@ -421,14 +449,11 @@ void identify_connected_components(
     const unsigned int maxn_clause,
     const unsigned int *d_clause,
     const unsigned int *d_n_clause,
-    unsigned int *d_n_elem,
-    unsigned int &n_elem,
-    const unsigned int max_n_elem,
-    unsigned int *d_rowidx,
-    unsigned int *d_rowidx_alt,
+    unsigned int *d_row_counters,
+    unsigned int *d_row_head,
+    unsigned int *d_row_next,
+    unsigned int *d_row_offset,
     unsigned int *d_colidx,
-    unsigned int *d_colidx_alt,
-    unsigned int *d_csr_row_ptr,
     const unsigned int n_variables,
     unsigned int *d_component_ptr,
     unsigned int *d_work,
@@ -436,62 +461,60 @@ void identify_connected_components(
     const unsigned int block_size,
     CachedAllocator &alloc)
     {
-    hipMemsetAsync(d_n_elem, 0, sizeof(unsigned int));
+    // set sentinel values
+    hipMemsetAsync(d_row_head, 0xff, sizeof(unsigned int)*n_variables);
+    hipMemsetAsync(d_row_next, 0xff, sizeof(unsigned int)*n_clauses*maxn_clause*maxn_clause);
 
-    // fill the connnectivity matrix
-    hipLaunchKernelGGL(kernel::find_dependencies, n_clauses/block_size + 1, block_size, 0, 0,
+    // initialize counter
+    hipMemsetAsync(d_row_counters, 0, sizeof(unsigned int)*(n_variables+1));
+
+    // go through the clauses and find dependencies between variables
+    hipLaunchKernelGGL(kernel::parse_clauses, n_clauses/block_size + 1, block_size, 0, 0,
         n_clauses,
         d_n_clause,
         d_clause,
         maxn_clause,
-        d_n_elem,
-        d_rowidx,
-        d_colidx,
-        max_n_elem);
+        d_row_counters,
+        d_row_head,
+        d_row_next);
 
-    // construct a CSR matrix
-    hipMemcpy(&n_elem, d_n_elem, sizeof(unsigned int), hipMemcpyDeviceToHost);
-
-    if (n_elem > max_n_elem)
-        return;
-
-    // COO -> CSR
-    cub::DoubleBuffer<unsigned int> d_keys(d_rowidx, d_rowidx_alt);
-    cub::DoubleBuffer<unsigned int> d_values(d_colidx, d_colidx_alt);
+    // prefix sum over row counts
     void *d_temp_storage = nullptr;
     size_t temp_storage_bytes = 0;
-    cub::DeviceRadixSort::SortPairs(
+    cub::DeviceScan::ExclusiveSum(
         d_temp_storage,
         temp_storage_bytes,
-        d_keys,
-        d_values,
-        n_elem);
+        d_row_counters,
+        d_row_offset,
+        n_variables+1);
     d_temp_storage = alloc.allocate(temp_storage_bytes);
-    cub::DeviceRadixSort::SortPairs(
+    cub::DeviceScan::ExclusiveSum(
         d_temp_storage,
         temp_storage_bytes,
-        d_keys,
-        d_values,
-        n_elem);
+        d_row_counters,
+        d_row_offset,
+        n_variables+1);
     alloc.deallocate((char *)d_temp_storage);
 
-    thrust::device_ptr<unsigned int> rowidx(d_keys.Current());
-    thrust::counting_iterator<unsigned int> rows_begin(0);
-    thrust::device_ptr<unsigned int> csr_row_ptr(d_csr_row_ptr);
-    thrust::lower_bound(
-        thrust::cuda::par(alloc),
-        rowidx,
-        rowidx + n_elem,
-        rows_begin,
-        rows_begin + n_variables + 1,
-        csr_row_ptr);
+    // flatten into CSR format
+    hipLaunchKernelGGL(kernel::flatten_rows, n_variables/block_size + 1, block_size, 0, 0,
+        maxn_clause,
+        d_clause,
+        n_variables,
+        d_row_offset,
+        d_row_head,
+        d_row_next,
+        d_colidx);
+
+    unsigned int nnz;
+    hipMemcpy(&nnz, &d_row_offset[n_variables], sizeof(unsigned int), hipMemcpyDeviceToHost);
 
     // find connected components
     ecl_connected_components(
         n_variables,
-        n_elem,
-        (const int *) d_csr_row_ptr,
-        (const int *) d_values.Current(),
+        nnz,
+        (const int *) d_row_offset,
+        (const int *) d_colidx,
         (int *) d_component_ptr,
         (int *) d_work,
         devprop,
