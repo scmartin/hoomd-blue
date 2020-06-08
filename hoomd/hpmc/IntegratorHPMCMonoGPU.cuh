@@ -351,25 +351,6 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
                         else
                             atomicMax(&s_max_num_literals, n + 1);
                         }
-
-                    // add a clause with x_i v !x_j (j only if it is not a ghost)
-                    unsigned int m = atomicAdd_system(d_num_clauses, 1);
-                    if (N_local + m < max_num_clauses)
-                        {
-                        unsigned int n = atomicAdd(&d_n_clause[N_local+m], 1);
-                        if (n < max_n_clause)
-                            d_clause[(m+N_local)*max_n_clause+n] = i << 1;
-
-                        if (check_j < N_local)
-                            {
-                            n = atomicAdd_system(&d_n_clause[N_local+m], 1);
-                            if (n < max_n_clause)
-                                d_clause[(m+N_local)*max_n_clause+n] = (check_j << 1) | check_old;
-                            }
-
-                        if (n >= max_n_clause)
-                            atomicMax(&s_max_num_literals, n + 1);
-                        }
                     }
                 }
             }
@@ -385,14 +366,48 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
         __syncthreads();
         } // end while (s_still_searching)
 
+    // write out the propositions in CNF form
     if (valid_ptl && master && idx < max_num_clauses)
         {
-        // the ith clause contains !x_i (or x_i, if rejected) and all literals that lead to x_i evaluating to true
-        unsigned int n = atomicAdd_system(&d_n_clause[idx], 1);
-        if (n < max_n_clause)
-            d_clause[idx*max_n_clause + n] = (idx << 1) | !s_reject_group[group];
+        // the ith clause contains !x_i and all literals x_j that lead to x_i evaluating to true
+        if (!s_reject_group[group])
+            {
+            // for every x_j, generate a new clause xi v !x_j
+            for (unsigned int k = 0; k < d_n_clause[idx] && k < max_n_clause; ++k)
+                {
+                unsigned int l = d_clause[idx*max_n_clause + k];
+                unsigned int v = l >> 1;
+                unsigned int a = l & 1;
+
+                unsigned int m = atomicAdd_system(d_num_clauses, 1);
+                if (N_local + m < max_num_clauses)
+                    {
+                    unsigned int n = atomicAdd(&d_n_clause[N_local+m], 1);
+                    if (n < max_n_clause)
+                        d_clause[(m+N_local)*max_n_clause+n] = idx << 1;
+                    n = atomicAdd_system(&d_n_clause[N_local+m], 1);
+                    if (n < max_n_clause)
+                        d_clause[(m+N_local)*max_n_clause+n] = (v << 1) | (a ^ 1);
+                    else
+                        atomicMax(&s_max_num_literals, n + 1);
+                    }
+                }
+
+            unsigned int n = atomicAdd_system(&d_n_clause[idx], 1);
+            if (n < max_n_clause)
+                d_clause[idx*max_n_clause + n] = (idx << 1) | 1;
+            else
+                atomicMax(&s_max_num_literals, n + 1);
+            }
         else
-            atomicMax(&s_max_num_literals, n + 1);
+            {
+            // if i is rejected, the ith clause is a unit
+            d_n_clause[idx] = 1;
+            if (max_n_clause > 0)
+                d_clause[idx*max_n_clause] = idx << 1;
+            else
+                atomicMax(&s_max_num_literals, 1);
+            }
         }
 
     __syncthreads();

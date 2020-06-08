@@ -41,11 +41,13 @@ __device__ inline bool update_watchlist(
     // false_literal is no longer being watched
     d_watch[false_literal] = SAT_sentinel;
 
+    #if 1
     // update the clauses watching it to a different watched literal
     while (c != SAT_sentinel)
         {
         unsigned int next = d_next_clause[c];
         unsigned int n_clause = d_n_clause[c];
+
         bool found_alternative = false;
         for (unsigned int j = 0; j < n_clause; ++j)
             {
@@ -56,6 +58,7 @@ __device__ inline bool update_watchlist(
                 {
                 found_alternative = true;
 
+                #if 1
                 // the variable corresponding to 'alternative' might become active at this point,
                 // because it might not be watched anywhere else. In such a case, we insert it at the
                 // 'beginning' of the active ring (that is, just after t)
@@ -73,6 +76,7 @@ __device__ inline bool update_watchlist(
                         d_next[t] = h;
                         }
                     }
+                #endif
 
                 // insert clause at begining of alternative literal's watch list
                 d_next_clause[c] = d_watch[alternative];
@@ -86,6 +90,7 @@ __device__ inline bool update_watchlist(
 
         c = next;
         }
+    #endif
 
     return true;
     }
@@ -162,7 +167,7 @@ __global__ void solve_sat(
 
     unsigned int h = d_head[node_idx];
 
-    // chase pointers until we find a tail ptr for the ring buffer
+    // chase pointers until we find a tail for the ring buffer
     unsigned int v = h;
     unsigned int n = 0;
     unsigned int t = SAT_sentinel;
@@ -213,7 +218,7 @@ __global__ void solve_sat(
 
             if (f == 1 || f == 2)
                 {
-                // on of the two literals is true
+                // one of the two literals is true
                 d_state[d] = f + 3;
                 t = k;
                 unit = true;
@@ -241,8 +246,7 @@ __global__ void solve_sat(
         if (!backtrack)
             {
             // move on
-            d++;
-            d_h[d-1] = k = h;
+            d_h[d++] = k = h;
 
             if (t == k)
                 {
@@ -258,8 +262,7 @@ __global__ void solve_sat(
             {
             t = k;
 
-            bool done = d != component_start;
-            while (!done && d_state[d-1] >= 2)
+            while (d > component_start && d_state[d-1] >= 2)
                 {
                 k = d_h[d-1];
                 d_assignment[k] = SAT_sentinel;
@@ -270,13 +273,10 @@ __global__ void solve_sat(
                     d_next[t] = h;
                     }
 
-                if (d == component_start)
-                    done = true;
-                else
-                    d--;
+                d--;
                 }
 
-            if (done)
+            if (d == component_start)
                 {
                 // can't backtrack further, no solutions
                 atomicAdd(d_unsat, 1);
@@ -389,6 +389,7 @@ __global__ void find_dependencies(
         return;
 
     unsigned int nclause = d_n_clause[tidx];
+
     for (unsigned int i = 0; i < nclause; ++i)
         {
         unsigned int l = d_clause[tidx*maxn_clause+i];

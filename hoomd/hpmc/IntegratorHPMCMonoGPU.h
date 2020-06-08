@@ -1639,6 +1639,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                         CHECK_CUDA_ERROR();
                     }
 
+                done = true;
                 if (n_elem > m_rowidx.getNumElements())
                     {
                     GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_rowidx);
@@ -1649,10 +1650,9 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     TAG_ALLOCATION(m_colidx);
                     GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_colidx_alt);
                     TAG_ALLOCATION(m_colidx_alt);
+                    done = false;
                     continue;
                     }
-
-                done = true;
                 }
             while (!done);
 
