@@ -273,13 +273,26 @@ void flatten(const int nodes, const int* const __restrict__ nidx, const int* con
   }
 }
 
+/*! Label connected components
+
+    \param nodes number of vertices in the graph
+    \param edges Number of edges in the graph
+    \param d_nidx the CSR row ptr of the adjacency matrix
+    \param d_nlist the CSR column index
+    \param d_nstat (ouput) the node labels, if assign_components is true, otherwise a list of pointers to itself
+    \param d_wl work array of the size of the number of vertices
+    \param deviceProp HIP device properties struct
+    \param assign_components if true, assign unique component indices by lowest vertex in component
+                             if false, return pointers in d_nstat for components traversal
+ */
 inline void ecl_connected_components(const int nodes,
     const int edges,
     const int *d_nidx,
     const int *d_nlist,
     int *d_nstat,
     int *d_wl,
-    const hipDeviceProp_t& deviceProp)
+    const hipDeviceProp_t& deviceProp,
+    bool assign_components = true)
     {
     const int SMs = deviceProp.multiProcessorCount;
     const int mTSM = deviceProp.maxThreadsPerMultiProcessor;
@@ -289,7 +302,9 @@ inline void ecl_connected_components(const int nodes,
     hipLaunchKernelGGL(compute1, dim3(blocks), dim3(ThreadsPerBlock), 0, 0, nodes, d_nidx, d_nlist, d_nstat, d_wl);
     hipLaunchKernelGGL(compute2, dim3(blocks), dim3(ThreadsPerBlock), 0, 0, nodes, d_nidx, d_nlist, d_nstat, d_wl);
     hipLaunchKernelGGL(compute3, dim3(blocks), dim3(ThreadsPerBlock), 0, 0, nodes, d_nidx, d_nlist, d_nstat, d_wl);
-    hipLaunchKernelGGL(flatten, dim3(blocks), dim3(ThreadsPerBlock), 0, 0, nodes, d_nidx, d_nlist, d_nstat);
+
+    if (assign_components)
+        hipLaunchKernelGGL(flatten, dim3(blocks), dim3(ThreadsPerBlock), 0, 0, nodes, d_nidx, d_nlist, d_nstat);
     }
 
 

@@ -12,6 +12,7 @@
 #include <thrust/iterator/discard_iterator.h>
 
 #include <cub/cub.cuh>
+#include <cub/iterator/discard_output_iterator.cuh>
 
 #include "hoomd/extern/ECL.cuh"
 
@@ -30,7 +31,10 @@ __device__ inline bool update_watchlist(
     const unsigned int *d_n_clause,
     const unsigned int *d_clause,
     const unsigned int maxn_clause,
-    const unsigned int *d_assignment)
+    const unsigned int *d_assignment,
+    unsigned int *d_next,
+    unsigned int &h,
+    unsigned int &t)
     {
     unsigned int c = d_watch[false_literal];
 
@@ -51,6 +55,24 @@ __device__ inline bool update_watchlist(
             if (d_assignment[v] == SAT_sentinel || d_assignment[v] == a ^ 1)
                 {
                 found_alternative = true;
+
+                // the variable corresponding to 'alternative' might become active at this point,
+                // because it might not be watched anywhere else. In such a case, we insert it at the
+                // 'beginning' of the active ring (that is, just after t)
+                if (d_assignment[v] == SAT_sentinel && d_watch[v << 1] == SAT_sentinel && d_watch[(v << 1) | 1] == SAT_sentinel)
+                    {
+                    if (t == SAT_sentinel)
+                        {
+                        t = h = v;
+                        d_next[t] = h;
+                        }
+                    else
+                        {
+                        d_next[v] = h;
+                        h = v;
+                        d_next[t] = h;
+                        }
+                    }
 
                 // insert clause at begining of alternative literal's watch list
                 d_next_clause[c] = d_watch[alternative];
@@ -117,25 +139,44 @@ __global__ void solve_sat(
     unsigned int *d_next,
     unsigned int *d_h,
     const unsigned int *d_head,
-    const unsigned int *d_tail,
     const unsigned int maxn_clause,
     const unsigned int *d_clause,
     const unsigned int *d_n_clause,
     unsigned int *d_assignment,
     unsigned int *d_state,
-    const unsigned int n_components,
+    const unsigned int *d_representative,
+    const unsigned int n_variables,
     unsigned int *d_unsat,
-    const unsigned int *d_component_begin)
+    unsigned int *d_heap)
     {
-    unsigned int component = threadIdx.x + blockIdx.x*blockDim.x;
+    unsigned int node_idx = threadIdx.x + blockIdx.x*blockDim.x;
 
-    if (component >= n_components)
+    if (node_idx >= n_variables)
         return;
 
-    unsigned int component_start = d_component_begin[component];
+    // start from the representatives of every component, all other threads just exit
+    if (d_representative[node_idx] != node_idx)
+        {
+        return;
+        }
 
-    unsigned int h = d_head[component];
-    unsigned int t = d_tail[component];
+    unsigned int h = d_head[node_idx];
+
+    // chase pointers until we find a tail ptr for the ring buffer
+    unsigned int v = h;
+    unsigned int n = 0;
+    unsigned int t = SAT_sentinel;
+    while (v != SAT_sentinel)
+        {
+        t = v;
+        v = d_next[v];
+        n++; // the size of the component
+        }
+    if (t != SAT_sentinel)
+        d_next[t] = h;
+
+    // allocate scratch memory for this component
+    unsigned int component_start = atomicAdd(d_heap, n);
     unsigned int d = component_start;
 
     while (true)
@@ -258,8 +299,10 @@ __global__ void solve_sat(
                          d_n_clause,
                          d_clause,
                          maxn_clause,
-                         d_assignment);
-
+                         d_assignment,
+                         d_next,
+                         h,
+                         t);
         }
     }
 
@@ -290,46 +333,44 @@ __global__ void setup_watch_list(
         }
     }
 
-__global__ void setup_active_ring(
+// Initialize the active list for every component.
+__global__ void initialize_components(
     unsigned int *d_watch,
     unsigned int *d_assignment,
-    const unsigned int *d_variables,
-    const unsigned int n_components,
-    const unsigned int *d_component_begin,
+    const unsigned int *d_component_ptr,
+    const unsigned int n_variables,
+    unsigned int *d_representative,
     unsigned int *d_head,
-    unsigned int *d_tail,
     unsigned int *d_next)
     {
-    unsigned int component = threadIdx.x + blockIdx.x*blockDim.x;
+    unsigned int node_idx = threadIdx.x + blockIdx.x*blockDim.x;
 
-    if (component >= n_components)
+    if (node_idx >= n_variables)
         return;
 
-    unsigned int component_start = d_component_begin[component];
-    unsigned int component_end = d_component_begin[component+1];
-
-    unsigned int h = SAT_sentinel;
-    unsigned int t = SAT_sentinel;
-
-    for (int d = component_end-1; d >= (int) component_start; --d)
+    // jump to the node with the lowest index in this component, which is its label
+    unsigned int next, vstat = d_component_ptr[node_idx];
+    while (vstat > (next = d_component_ptr[vstat]))
         {
-        unsigned int var = d_variables[d];
-        d_assignment[var] = SAT_sentinel;
-        if (d_watch[var << 1] != SAT_sentinel || d_watch[(var << 1) | 1] != SAT_sentinel)
-            {
-            d_next[var] = h;
-            h = var;
+        vstat = next;
+        }
+    unsigned int component = vstat;
 
-            if (t == SAT_sentinel)
-                t = var;
+    // store the reprentative for this node's component in global mem
+    d_representative[node_idx] = component;
+
+    // assign a sentinel value to the variable for this node
+    d_assignment[node_idx] = SAT_sentinel;
+
+    if (d_watch[node_idx << 1] != SAT_sentinel || d_watch[(node_idx << 1) | 1] != SAT_sentinel)
+        {
+        // append ourselves to the linked list
+        unsigned int p = atomicCAS(&d_head[component], SAT_sentinel, node_idx);
+        while (p != SAT_sentinel)
+            {
+            p = atomicCAS(&d_next[p], SAT_sentinel, node_idx);
             }
         }
-
-    if (t != SAT_sentinel)
-        d_next[t] = h;
-
-    d_head[component] = h;
-    d_tail[component] = t;
     }
 
 __global__ void find_dependencies(
@@ -374,8 +415,7 @@ __global__ void find_dependencies(
 
 } //end namespace kernel
 
-
-bool label_connected_components(
+void identify_connected_components(
     const unsigned int n_clauses,
     const unsigned int maxn_clause,
     const unsigned int *d_clause,
@@ -383,15 +423,13 @@ bool label_connected_components(
     unsigned int *d_n_elem,
     const unsigned int max_n_elem,
     unsigned int *d_rowidx,
+    unsigned int *d_rowidx_alt,
     unsigned int *d_colidx,
+    unsigned int *d_colidx_alt,
     unsigned int *d_csr_row_ptr,
     const unsigned int n_variables,
-    unsigned int *d_phi,
-    unsigned int *d_phi_alt,
-    unsigned int *d_components,
-    unsigned int &n_components,
+    unsigned int *d_component_ptr,
     unsigned int *d_work,
-    unsigned int *d_component_begin,
     const hipDeviceProp_t devprop,
     const unsigned int block_size,
     CachedAllocator &alloc)
@@ -414,23 +452,29 @@ bool label_connected_components(
     hipMemcpy(&nnz, d_n_elem, sizeof(unsigned int), hipMemcpyDeviceToHost);
 
     if (nnz > max_n_elem)
-        return false;
+        return;
 
     // COO -> CSR
-    thrust::device_ptr<unsigned int> rowidx(d_rowidx);
-    thrust::device_ptr<unsigned int> colidx(d_colidx);
+    cub::DoubleBuffer<unsigned int> d_keys(d_rowidx, d_rowidx_alt);
+    cub::DoubleBuffer<unsigned int> d_values(d_colidx, d_colidx_alt);
+    void *d_temp_storage = nullptr;
+    size_t temp_storage_bytes = 0;
+    cub::DeviceRadixSort::SortPairs(
+        d_temp_storage,
+        temp_storage_bytes,
+        d_keys,
+        d_values,
+        nnz);
+    d_temp_storage = alloc.allocate(temp_storage_bytes);
+    cub::DeviceRadixSort::SortPairs(
+        d_temp_storage,
+        temp_storage_bytes,
+        d_keys,
+        d_values,
+        nnz);
+    alloc.deallocate((char *)d_temp_storage);
 
-    // throw out duplicates
-    auto zip_it = thrust::make_zip_iterator(thrust::make_tuple(rowidx,colidx));
-    thrust::sort(
-        thrust::cuda::par(alloc),
-        zip_it,
-        zip_it + nnz);
-    auto new_end = thrust::unique(thrust::cuda::par(alloc),
-                                  zip_it,
-                                  zip_it + nnz);
-    nnz = new_end - zip_it;
-
+    thrust::device_ptr<unsigned int> rowidx(d_keys.Current());
     thrust::counting_iterator<unsigned int> rows_begin(0);
     thrust::device_ptr<unsigned int> csr_row_ptr(d_csr_row_ptr);
     thrust::lower_bound(
@@ -446,67 +490,17 @@ bool label_connected_components(
         n_variables,
         nnz,
         (const int *) d_csr_row_ptr,
-        (const int *) d_colidx,
-        (int *) d_components,
+        (const int *) d_values.Current(),
+        (int *) d_component_ptr,
         (int *) d_work,
-        devprop);
-
-    // put first member of every component into phi
-    void *d_temp_storage = NULL;
-    size_t temp_storage_bytes = 0;
-
-    thrust::device_ptr<unsigned int> phi(d_phi);
-    thrust::sequence(thrust::cuda::par(alloc),
-        phi,
-        phi + n_variables,
-        0);
-
-    cub::DoubleBuffer<unsigned int> d_keys(d_components, d_work);
-    cub::DoubleBuffer<unsigned int> d_values(d_phi, d_phi_alt);
-    cub::DeviceRadixSort::SortPairs(d_temp_storage,
-        temp_storage_bytes,
-        d_keys,
-        d_values,
-        n_variables);
-
-    // allocate temp storage
-    d_temp_storage = alloc.allocate(temp_storage_bytes);
-    cub::DeviceRadixSort::SortPairs(d_temp_storage,
-        temp_storage_bytes,
-        d_keys,
-        d_values,
-        n_variables);
-    alloc.deallocate((char *)d_temp_storage);
-
-    // find start and end for every component
-    thrust::device_ptr<unsigned int> component_begin(d_component_begin);
-    thrust::device_ptr<unsigned int> keys(d_keys.Current());
-
-    auto it = thrust::reduce_by_key(
-        thrust::cuda::par(alloc),
-        keys,
-        keys + n_variables,
-        thrust::counting_iterator<unsigned int>(0),
-        thrust::make_discard_iterator(),
-        component_begin,
-        thrust::equal_to<unsigned int>(),
-        thrust::minimum<unsigned int>());
-
-    n_components = it.second - component_begin;
-
-    // set the last element
-    thrust::fill(component_begin + n_components,
-                 component_begin + n_components + 1,
-                 n_variables);
-
-    return d_values.selector != 0;
+        devprop,
+        false);
     }
 
 // solve the satisfiability problem
 void solve_sat(unsigned int *d_watch,
     unsigned int *d_next_clause,
     unsigned int *d_head,
-    unsigned int *d_tail,
     unsigned int *d_next,
     unsigned int *d_h,
     unsigned int *d_state,
@@ -517,14 +511,17 @@ void solve_sat(unsigned int *d_watch,
     const unsigned int n_variables,
     const unsigned int n_clauses,
     unsigned int *d_unsat,
-    const unsigned int *d_phi,
-    unsigned int n_components,
-    const unsigned int *d_component_begin,
+    const unsigned int *d_component_ptr,
+    unsigned int *d_representative,
+    unsigned int *d_heap,
     const unsigned int block_size)
     {
     hipMemsetAsync(d_unsat, 0, sizeof(unsigned int));
+    hipMemsetAsync(d_heap, 0, sizeof(unsigned int));
 
     // initialize with sentinel values
+    hipMemsetAsync(d_head, 0xff, sizeof(unsigned int)*n_variables);
+    hipMemsetAsync(d_next, 0xff, sizeof(unsigned int)*n_variables);
     hipMemsetAsync(d_watch, 0xff, sizeof(unsigned int)*2*n_variables);
     hipMemsetAsync(d_next_clause, 0xff, sizeof(unsigned int)*n_clauses);
 
@@ -537,31 +534,30 @@ void solve_sat(unsigned int *d_watch,
         d_next_clause);
 
     unsigned int sat_block_size = 256;
-    hipLaunchKernelGGL(kernel::setup_active_ring, n_components/sat_block_size + 1, sat_block_size, 0, 0,
+    hipLaunchKernelGGL(kernel::initialize_components, n_variables/sat_block_size + 1, sat_block_size, 0, 0,
         d_watch,
         d_assignment,
-        d_phi,
-        n_components,
-        d_component_begin,
+        d_component_ptr,
+        n_variables,
+        d_representative,
         d_head,
-        d_tail,
         d_next);
 
-    hipLaunchKernelGGL(kernel::solve_sat, n_components/sat_block_size + 1, sat_block_size, 0, 0,
+    hipLaunchKernelGGL(kernel::solve_sat, n_variables/sat_block_size + 1, sat_block_size, 0, 0,
         d_watch,
         d_next_clause,
         d_next,
         d_h,
         d_head,
-        d_tail,
         maxn_clause,
         d_clause,
         d_n_clause,
         d_assignment,
         d_state,
-        n_components,
+        d_representative,
+        n_variables,
         d_unsat,
-        d_component_begin);
+        d_heap);
     }
 
 } //end namespace gpu

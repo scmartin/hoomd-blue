@@ -345,7 +345,8 @@ void connected_components(
         d_colidx,
         d_components,
         d_work,
-        dev_prop);
+        dev_prop,
+        true);
 
     // reuse work array
     thrust::device_ptr<int> components(d_components);
