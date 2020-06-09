@@ -396,34 +396,25 @@ __global__ void find_dependencies(
     unsigned int nlit = d_n_literals[tidx];
     unsigned int prev = SAT_sentinel;
 
-    // merge all elements in each clause asssociated with this variable, generating 2*n edges per clause
-    bool first = true;
-    unsigned int first_literal;
+    // merge all elements in each clause asssociated with this variable, generating 2(n-1) edges per clause
     for (unsigned int j = 0; j < nlit; ++j)
         {
         unsigned int l = d_literals[tidx*maxn_literals+j];
 
-        // instead of generating undirected edges, we save some storage by circularly linking the clauses
-        // the strongly connected components are still those of the undirected graph
-
-        if (first)
-            first_literal = l;
-
-        if (prev != SAT_sentinel)
+        if (prev != SAT_sentinel && l != SAT_sentinel)
             {
-            unsigned int v = prev >> 1;
-            unsigned int w = (l == SAT_sentinel ? first_literal : l) >> 1;
+            unsigned int v = l >> 1;
+            unsigned int w = prev >> 1;
 
-            // add directed edge
-            unsigned int k = atomicAdd(d_n_elem, 1);
-            if (k < max_n_elem)
+            // add bidirectional edge
+            unsigned int k = atomicAdd(d_n_elem, 2);
+            if (k + 1 < max_n_elem)
                 {
-                d_rowidx[k] = v;
-                d_colidx[k] = w;
+                d_rowidx[k] = d_colidx[k+1] = v;
+                d_colidx[k] = d_rowidx[k+1] = w;
                 }
             }
 
-        first = (l == SAT_sentinel);
         prev = l;
         }
     }
