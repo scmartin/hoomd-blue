@@ -14,13 +14,13 @@
 #include <cub/cub.cuh>
 #include <cub/iterator/discard_output_iterator.cuh>
 
+#include "IntegratorHPMCMonoGPUTypes.cuh"
+
 #include "hoomd/extern/ECL.cuh"
 
 namespace hpmc {
 
 namespace gpu {
-
-const unsigned int SAT_sentinel = 0xffffffff;
 
 namespace kernel {
 
@@ -28,9 +28,7 @@ __device__ inline bool update_watchlist(
     const unsigned int false_literal,
     unsigned int *d_watch,
     unsigned int *d_next_clause,
-    const unsigned int *d_n_clause,
-    const unsigned int *d_clause,
-    const unsigned int maxn_clause,
+    const unsigned int *d_literals,
     const unsigned int *d_assignment,
     unsigned int *d_next,
     unsigned int &h,
@@ -41,24 +39,25 @@ __device__ inline bool update_watchlist(
     // false_literal is no longer being watched
     d_watch[false_literal] = SAT_sentinel;
 
-    #if 1
     // update the clauses watching it to a different watched literal
     while (c != SAT_sentinel)
         {
         unsigned int next = d_next_clause[c];
-        unsigned int n_clause = d_n_clause[c];
 
         bool found_alternative = false;
-        for (unsigned int j = 0; j < n_clause; ++j)
+        unsigned int j = c;
+        while (true)
             {
-            unsigned int alternative = d_clause[c*maxn_clause+j];
+            unsigned int alternative = d_literals[j++];
+            if (alternative == SAT_sentinel)
+                break; // end of clause
+
             unsigned int v = alternative >> 1;
             unsigned int a = alternative & 1;
             if (d_assignment[v] == SAT_sentinel || d_assignment[v] == a ^ 1)
                 {
                 found_alternative = true;
 
-                #if 1
                 // the variable corresponding to 'alternative' might become active at this point,
                 // because it might not be watched anywhere else. In such a case, we insert it at the
                 // 'beginning' of the active ring (that is, just after t)
@@ -76,7 +75,6 @@ __device__ inline bool update_watchlist(
                         d_next[t] = h;
                         }
                     }
-                #endif
 
                 // insert clause at begining of alternative literal's watch list
                 d_next_clause[c] = d_watch[alternative];
@@ -90,7 +88,6 @@ __device__ inline bool update_watchlist(
 
         c = next;
         }
-    #endif
 
     return true;
     }
@@ -100,21 +97,22 @@ __device__ inline bool is_unit(
     const unsigned int literal,
     const unsigned int *d_watch,
     const unsigned int *d_next_clause,
-    const unsigned int maxn_clause,
-    const unsigned int *d_clause,
-    const unsigned int *d_n_clause,
+    const unsigned int *d_literals,
     const unsigned int *d_assignment)
     {
     unsigned int c = d_watch[literal];
 
     while (c != SAT_sentinel)
         {
-        unsigned int n_clause = d_n_clause[c];
-
         bool unit_clause = true;
-        for (unsigned int j = 0; j < n_clause; ++j)
+        unsigned int j = c;
+        while (true)
             {
-            unsigned int l = d_clause[c*maxn_clause+j];
+            unsigned int l = d_literals[j++];
+
+            if (l == SAT_sentinel)
+                break; // end of clause
+
             if (l == literal)
                 continue;
 
@@ -144,9 +142,7 @@ __global__ void solve_sat(
     unsigned int *d_next,
     unsigned int *d_h,
     const unsigned int *d_head,
-    const unsigned int maxn_clause,
-    const unsigned int *d_clause,
-    const unsigned int *d_n_clause,
+    const unsigned int *d_literals,
     unsigned int *d_assignment,
     unsigned int *d_state,
     const unsigned int *d_representative,
@@ -202,16 +198,12 @@ __global__ void solve_sat(
             bool is_h_unit = is_unit(h << 1,
                                      d_watch,
                                      d_next_clause,
-                                     maxn_clause,
-                                     d_clause,
-                                     d_n_clause,
+                                     d_literals,
                                      d_assignment);
             bool is_neg_h_unit = is_unit((h << 1) | 1,
                                      d_watch,
                                      d_next_clause,
-                                     maxn_clause,
-                                     d_clause,
-                                     d_n_clause,
+                                     d_literals,
                                      d_assignment);
 
             unsigned int f = is_h_unit + (is_neg_h_unit << 1);
@@ -296,9 +288,7 @@ __global__ void solve_sat(
         update_watchlist((k << 1) | b,
                          d_watch,
                          d_next_clause,
-                         d_n_clause,
-                         d_clause,
-                         maxn_clause,
+                         d_literals,
                          d_assignment,
                          d_next,
                          h,
@@ -307,29 +297,44 @@ __global__ void solve_sat(
     }
 
 __global__ void setup_watch_list(
-    unsigned int n_clauses,
-    const unsigned int maxn_clause,
-    const unsigned int *d_clause,
-    const unsigned int *d_n_clause,
+    unsigned int n_variables,
+    const unsigned int maxn_literals,
+    const unsigned int *d_literals,
+    const unsigned int *d_n_literals,
     unsigned int *d_watch,
     unsigned int *d_next_clause)
     {
     unsigned int tidx = threadIdx.x + blockDim.x*blockIdx.x;
 
-    if (tidx >= n_clauses)
+    if (tidx >= n_variables)
         return;
 
-    // ignore empty clauses (Is this really necessary and shouldn't the disjunction be false then?)
-    if (d_n_clause[tidx] == 0)
-        return;
+    // go through the literals associated with this variable and pick the first literal of every clause
+    unsigned nlit = d_n_literals[tidx];
 
-    unsigned int first_literal = d_clause[tidx*maxn_clause];
-
-    // append to the singly linked list for this literal
-    unsigned int p = atomicCAS(&d_watch[first_literal], SAT_sentinel, tidx);
-    while (p != SAT_sentinel)
+    bool first = true;
+    for (unsigned int i = 0; i < nlit; ++i)
         {
-        p = atomicCAS(&d_next_clause[p], SAT_sentinel, tidx);
+        unsigned int l = d_literals[tidx*maxn_literals+i];
+
+        if (l == SAT_sentinel)
+            {
+            first = true;
+            continue;
+            }
+
+        if (first)
+            {
+            // append the clause to the singly linked list for this literal
+            unsigned int c = tidx*maxn_literals+i;
+            unsigned int p = atomicCAS(&d_watch[l], SAT_sentinel, c);
+            while (p != SAT_sentinel)
+                {
+                p = atomicCAS(&d_next_clause[p], SAT_sentinel, c);
+                }
+            }
+
+        first = false;
         }
     }
 
@@ -374,10 +379,10 @@ __global__ void initialize_components(
     }
 
 __global__ void find_dependencies(
-    const unsigned int n_clauses,
-    const unsigned int *d_n_clause,
-    const unsigned int *d_clause,
-    const unsigned int maxn_clause,
+    const unsigned int n_variables,
+    const unsigned int *d_n_literals,
+    const unsigned int *d_literals,
+    const unsigned int maxn_literals,
     unsigned int *d_n_elem,
     unsigned int *d_rowidx,
     unsigned int *d_colidx,
@@ -385,42 +390,41 @@ __global__ void find_dependencies(
     {
     const unsigned int tidx = threadIdx.x + blockIdx.x*blockDim.x;
 
-    if (tidx >= n_clauses)
+    if (tidx >= n_variables)
         return;
 
-    unsigned int nclause = d_n_clause[tidx];
+    unsigned int nlit = d_n_literals[tidx];
+    unsigned int prev = SAT_sentinel;
 
-    for (unsigned int i = 0; i < nclause; ++i)
+    // merge all elements in each clause asssociated with this variable, generating 2(n-1) edges per clause
+    for (unsigned int j = 0; j < nlit; ++j)
         {
-        unsigned int l = d_clause[tidx*maxn_clause+i];
-        unsigned int v = l >> 1;
+        unsigned int l = d_literals[tidx*maxn_literals+j];
 
-        for (unsigned int j = 0; j < nclause; ++j)
+        if (prev != SAT_sentinel && l != SAT_sentinel)
             {
-            if (j == i)
-                continue;
+            unsigned int v = l >> 1;
+            unsigned int w = prev >> 1;
 
-            unsigned int m = d_clause[tidx*maxn_clause+j];
-            unsigned int w = m >> 1;
-
-            // add dependency
-            unsigned int k = atomicAdd(d_n_elem, 1);
-            if (k < max_n_elem)
+            // add bidirectional edge
+            unsigned int k = atomicAdd(d_n_elem, 2);
+            if (k + 1 < max_n_elem)
                 {
-                d_rowidx[k] = v;
-                d_colidx[k] = w;
+                d_rowidx[k] = d_colidx[k+1] = v;
+                d_colidx[k] = d_rowidx[k+1] = w;
                 }
             }
+
+        prev = l;
         }
     }
 
 } //end namespace kernel
 
 void identify_connected_components(
-    const unsigned int n_clauses,
-    const unsigned int maxn_clause,
-    const unsigned int *d_clause,
-    const unsigned int *d_n_clause,
+    const unsigned int maxn_literals,
+    const unsigned int *d_literals,
+    const unsigned int *d_n_literals,
     unsigned int *d_n_elem,
     unsigned int &n_elem,
     const unsigned int max_n_elem,
@@ -439,11 +443,11 @@ void identify_connected_components(
     hipMemsetAsync(d_n_elem, 0, sizeof(unsigned int));
 
     // fill the connnectivity matrix
-    hipLaunchKernelGGL(kernel::find_dependencies, n_clauses/block_size + 1, block_size, 0, 0,
-        n_clauses,
-        d_n_clause,
-        d_clause,
-        maxn_clause,
+    hipLaunchKernelGGL(kernel::find_dependencies, n_variables/block_size + 1, block_size, 0, 0,
+        n_variables,
+        d_n_literals,
+        d_literals,
+        maxn_literals,
         d_n_elem,
         d_rowidx,
         d_colidx,
@@ -499,18 +503,18 @@ void identify_connected_components(
     }
 
 // solve the satisfiability problem
-void solve_sat(unsigned int *d_watch,
+void solve_sat(
+    unsigned int *d_watch,
     unsigned int *d_next_clause,
     unsigned int *d_head,
     unsigned int *d_next,
     unsigned int *d_h,
     unsigned int *d_state,
-    const unsigned int maxn_clause,
-    const unsigned int *d_clause,
-    const unsigned int *d_n_clause,
+    const unsigned int maxn_literals,
+    const unsigned int *d_literals,
+    const unsigned int *d_n_literals,
     unsigned int *d_assignment,
     const unsigned int n_variables,
-    const unsigned int n_clauses,
     unsigned int *d_unsat,
     const unsigned int *d_component_ptr,
     unsigned int *d_representative,
@@ -524,13 +528,13 @@ void solve_sat(unsigned int *d_watch,
     hipMemsetAsync(d_head, 0xff, sizeof(unsigned int)*n_variables);
     hipMemsetAsync(d_next, 0xff, sizeof(unsigned int)*n_variables);
     hipMemsetAsync(d_watch, 0xff, sizeof(unsigned int)*2*n_variables);
-    hipMemsetAsync(d_next_clause, 0xff, sizeof(unsigned int)*n_clauses);
+    hipMemsetAsync(d_next_clause, 0xff, sizeof(unsigned int)*n_variables*maxn_literals);
 
-    hipLaunchKernelGGL(kernel::setup_watch_list, n_clauses/block_size + 1, block_size, 0, 0,
-        n_clauses,
-        maxn_clause,
-        d_clause,
-        d_n_clause,
+    hipLaunchKernelGGL(kernel::setup_watch_list, n_variables/block_size + 1, block_size, 0, 0,
+        n_variables,
+        maxn_literals,
+        d_literals,
+        d_n_literals,
         d_watch,
         d_next_clause);
 
@@ -550,9 +554,7 @@ void solve_sat(unsigned int *d_watch,
         d_next,
         d_h,
         d_head,
-        maxn_clause,
-        d_clause,
-        d_n_clause,
+        d_literals,
         d_assignment,
         d_state,
         d_representative,

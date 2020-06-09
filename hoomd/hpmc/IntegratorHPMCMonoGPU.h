@@ -244,11 +244,9 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         GlobalArray<unsigned int> m_reject_out_of_cell;       //!< Flags to reject particle moves if they are out of the cell, per particle
         GlobalArray<unsigned int> m_reject;                   //!< Flags to reject particle moves, per particle
 
-        GlobalArray<unsigned int> m_clause;                   //!< List of clauses
-        GlobalArray<unsigned int> m_num_clauses;              //!< Current number of clauses
-        GlobalArray<unsigned int> m_n_clause;                 //!< Number of literals per clause
-        unsigned int m_max_num_clauses;                       //!< Max number of clauses (capacity)
-        unsigned int m_max_n_clause;                          //!< Max length of a clause (capacity)
+        GlobalArray<unsigned int> m_literals;                 //!< Table of literals attached to variables
+        GlobalVector<unsigned int> m_n_literals;              //!< Number of literals per variable
+        unsigned int m_max_n_literals;                        //!< Max length of a literals (capacity)
         GlobalArray<unsigned int> m_req_n_literals;           //!< Requested  number of literals
 
         // temporary data structures for SAT solver
@@ -401,8 +399,8 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
     GlobalArray<unsigned int>(1, this->m_exec_conf).swap(m_reject);
     TAG_ALLOCATION(m_reject);
 
-    GlobalArray<unsigned int>(1, this->m_exec_conf).swap(m_num_clauses);
-    TAG_ALLOCATION(m_num_clauses);
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_n_literals);
+    TAG_ALLOCATION(m_n_literals);
 
     GlobalArray<unsigned int>(1, this->m_exec_conf).swap(m_req_n_literals);
     TAG_ALLOCATION(m_req_n_literals);
@@ -412,8 +410,7 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
         ArrayHandle<unsigned int> h_req_n_literals(m_req_n_literals, access_location::host, access_mode::overwrite);
         *h_req_n_literals.data = 0;
         }
-    m_max_n_clause = 0;
-    m_max_num_clauses = 0;
+    m_max_n_literals = 0;
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_component_ptr);
     TAG_ALLOCATION(m_component_ptr);
@@ -808,6 +805,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             m_trial_orientation.resize(this->m_pdata->getMaxN());
             m_trial_vel.resize(this->m_pdata->getMaxN());
             m_trial_move_type.resize(this->m_pdata->getMaxN());
+            m_n_literals.resize(this->m_pdata->getMaxN());
 
             update_gpu_advice = true;
             }
@@ -956,6 +954,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
 
         for (unsigned int i = 0; i < this->m_nselect; i++)
             {
+            if (this->m_prof) this->m_prof->push(this->m_exec_conf, "Propose moves");
+
                 { // ArrayHandle scope
                 ArrayHandle<unsigned int> d_update_order_by_ptl(m_update_order.get(), access_location::device, access_mode::read);
                 ArrayHandle<unsigned int> d_reject_out_of_cell(m_reject_out_of_cell, access_location::device, access_mode::overwrite);
@@ -1018,11 +1018,9 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     this->m_exec_conf->dev_prop,
                     this->m_pdata->getGPUPartition(),
                     0, // streams,
-                    0, // d_num_clauses
-                    0, // max_num_clauses
-                    0, // d_clause
-                    0, // d_n_clause
-                    0, // max_n_clause
+                    0, // d_literals
+                    0, // d_n_literals
+                    0, // max_n_literals
                     0 // d_req_n_literals
                     );
 
@@ -1036,6 +1034,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     CHECK_CUDA_ERROR();
                 m_tuner_moves->end();
                 }
+
+            if (this->m_prof) this->m_prof->pop(this->m_exec_conf);
 
             bool reallocate = true;
 
@@ -1083,6 +1083,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     }
                 this->m_exec_conf->endMultiGPU();
 
+                if (this->m_prof) this->m_prof->push(this->m_exec_conf, "Check overlaps");
+
                     {
                     // ArrayHandle scope
                     ArrayHandle<unsigned int> d_update_order_by_ptl(m_update_order.get(), access_location::device, access_mode::read);
@@ -1106,9 +1108,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     ArrayHandle<hpmc_counters_t> d_counters_per_device(this->m_counters, access_location::device, access_mode::readwrite);
 
                     // CNF
-                    ArrayHandle<unsigned int> d_num_clauses(this->m_num_clauses, access_location::device, access_mode::readwrite);
-                    ArrayHandle<unsigned int> d_clause(this->m_clause, access_location::device, access_mode::readwrite);
-                    ArrayHandle<unsigned int> d_n_clause(this->m_n_clause, access_location::device, access_mode::readwrite);
+                    ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::readwrite);
+                    ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::readwrite);
                     ArrayHandle<unsigned int> d_req_n_literals(this->m_req_n_literals, access_location::device, access_mode::readwrite);
 
                     // depletant counters
@@ -1120,9 +1121,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     ArrayHandle<unsigned int> d_n_depletants_ntrial(m_n_depletants_ntrial, access_location::device, access_mode::overwrite);
 
                     // reset counters
-                    if (m_n_clause.getNumElements())
-                        hipMemsetAsync(d_n_clause.data, 0, sizeof(unsigned int)*m_n_clause.getNumElements());
-                    hipMemsetAsync(d_num_clauses.data, 0, sizeof(unsigned int));
+                    hipMemsetAsync(d_n_literals.data, 0, sizeof(unsigned int)*m_n_literals.getNumElements());
 
                     // fill the parameter structure for the GPU kernels
                     gpu::hpmc_args_t args(
@@ -1166,11 +1165,9 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                         this->m_exec_conf->dev_prop,
                         this->m_pdata->getGPUPartition(),
                         &m_narrow_phase_streams.front(),
-                        d_num_clauses.data,
-                        m_max_num_clauses,
-                        d_clause.data,
-                        d_n_clause.data,
-                        m_max_n_clause,
+                        d_literals.data,
+                        d_n_literals.data,
+                        m_max_n_literals,
                         d_req_n_literals.data);
 
                     /*
@@ -1189,6 +1186,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     m_tuner_narrow->end();
                     this->m_exec_conf->endMultiGPU();
                     }
+
+                if (this->m_prof) this->m_prof->pop(this->m_exec_conf);
 
                 // need to resize memory?
                 reallocate = checkReallocate();
@@ -1587,19 +1586,19 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
 
             bool done = false;
 
-            ArrayHandle<unsigned int> h_num_clauses(this->m_num_clauses, access_location::host, access_mode::read);
-            unsigned int nclauses = this->m_pdata->getN() + *h_num_clauses.data;
             unsigned int nvariables = this->m_pdata->getN();
             unsigned int nliterals = 2*nvariables;
             m_component_ptr.resize(nvariables);
             m_csr_row_ptr.resize(nvariables+1);
             m_work.resize(nvariables);
 
+            if (this->m_prof) this->m_prof->push(this->m_exec_conf, "SAT");
+
             do
                 {
                 // CNF
-                ArrayHandle<unsigned int> d_clause(this->m_clause, access_location::device, access_mode::read);
-                ArrayHandle<unsigned int> d_n_clause(this->m_n_clause, access_location::device, access_mode::read);
+                ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::read);
+                ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::read);
 
                 unsigned int n_elem = 0;
 
@@ -1616,10 +1615,9 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     // preprocessing
                     unsigned int block_size = 512;
                     gpu::identify_connected_components(
-                        nclauses,
-                        m_max_n_clause,
-                        d_clause.data,
-                        d_n_clause.data,
+                        m_max_n_literals,
+                        d_literals.data,
+                        d_n_literals.data,
                         d_n_elem.data,
                         n_elem,
                         m_rowidx.getNumElements(),
@@ -1656,9 +1654,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 }
             while (!done);
 
-            // max allocate watch list: number of literals times number of clauses (later, per component)
             m_watch.resize(nliterals);
-            m_next_clause.resize(nclauses);
+            m_next_clause.resize(nvariables*m_max_n_literals);
             m_head.resize(nvariables);
             m_next.resize(nvariables);
             m_h.resize(nvariables);
@@ -1669,8 +1666,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             ArrayHandle<unsigned int> d_component_ptr(m_component_ptr, access_location::device, access_mode::read);
 
             // CNF
-            ArrayHandle<unsigned int> d_clause(this->m_clause, access_location::device, access_mode::read);
-            ArrayHandle<unsigned int> d_n_clause(this->m_n_clause, access_location::device, access_mode::read);
+            ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::read);
+            ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::read);
 
             // temporary variables for solver
             ArrayHandle<unsigned int> d_watch(m_watch, access_location::device, access_mode::overwrite);
@@ -1694,12 +1691,11 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     d_next.data,
                     d_h.data,
                     d_state.data,
-                    m_max_n_clause,
-                    d_clause.data,
-                    d_n_clause.data,
+                    m_max_n_literals,
+                    d_literals.data,
+                    d_n_literals.data,
                     d_reject.data,
                     nvariables,
-                    nclauses,
                     d_unsat.data,
                     d_component_ptr.data,
                     d_representative.data,
@@ -1715,6 +1711,10 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 if (*h_unsat.data)
                     throw std::runtime_error("Acceptance failed, Boolean formula cannot be satisified.\n");
                 }
+
+            if (this->m_prof) this->m_prof->pop(this->m_exec_conf);
+
+            if (this->m_prof) this->m_prof->push(this->m_exec_conf, "Update particle data");
 
                 {
                 // access data for proposed moves
@@ -1761,6 +1761,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 m_tuner_update_pdata->end();
                 this->m_exec_conf->endMultiGPU();
                 }
+
+            if (this->m_prof) this->m_prof->pop(this->m_exec_conf);
             } // end loop over nselect
 
         if (ngpu > 1)
@@ -1988,43 +1990,28 @@ void IntegratorHPMCMonoGPU< Shape >::updateCellWidth()
 template<class Shape>
 bool IntegratorHPMCMonoGPU< Shape >::checkReallocate()
     {
-    // read back overflow condition and resize as necessary
-    ArrayHandle<unsigned int> h_num_clauses(m_num_clauses, access_location::host, access_mode::read);
+    if (this->m_prof) this->m_prof->push(this->m_exec_conf, "reallocate");
     ArrayHandle<unsigned int> h_req_n_literals(m_req_n_literals, access_location::host, access_mode::read);
-
-    // every particle gets at least one clause
-    unsigned int nclauses = this->m_pdata->getMaxN() + *h_num_clauses.data;
-
-    bool reallocate_clauses = nclauses > m_max_num_clauses;
-
-    if (reallocate_clauses)
-        {
-        this->m_exec_conf->msg->notice(9) << "hpmc resizing max number of clauses " << m_max_num_clauses << " -> " << nclauses << std::endl;
-        GlobalArray<unsigned int> n_clause(nclauses, this->m_exec_conf);
-        m_n_clause.swap(n_clause);
-        TAG_ALLOCATION(m_n_clause);
-        m_max_num_clauses = nclauses;
-        }
-
     unsigned int req_maxn = *h_req_n_literals.data;
-    if (req_maxn > m_max_n_clause)
+    if (req_maxn > m_max_n_literals)
         {
-        m_max_n_clause = req_maxn;
+        m_max_n_literals = req_maxn;
         }
-
-    unsigned int req_size_clauses = m_max_n_clause*m_max_num_clauses;
+    unsigned int req_size_literals = m_max_n_literals*this->m_pdata->getMaxN();
 
     // resize
-    bool reallocate = req_size_clauses > m_clause.getNumElements();
+    bool reallocate = req_size_literals > m_literals.getNumElements();
     if (reallocate)
         {
-        this->m_exec_conf->msg->notice(9) << "hpmc resizing clauses " << m_clause.getNumElements() << " -> " << req_size_clauses << std::endl;
+        this->m_exec_conf->msg->notice(9) << "hpmc resizing literals " << m_literals.getNumElements() << " -> " << req_size_literals << std::endl;
 
-        GlobalArray<unsigned int> clause(req_size_clauses, this->m_exec_conf);
-        m_clause.swap(clause);
-        TAG_ALLOCATION(m_clause);
+        GlobalArray<unsigned int> literals(req_size_literals, this->m_exec_conf);
+        m_literals.swap(literals);
+        TAG_ALLOCATION(m_literals);
         }
-    return reallocate || reallocate_clauses;
+    if (this->m_prof) this->m_prof->pop(this->m_exec_conf);
+
+    return reallocate;
     }
 
 #ifdef ENABLE_MPI

@@ -71,11 +71,9 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
                            const unsigned int max_queue_size,
                            const unsigned int work_offset,
                            const unsigned int nwork,
-                           unsigned int *d_num_clauses,
-                           const unsigned int max_num_clauses,
-                           unsigned int *d_clause,
-                           unsigned int *d_n_clause,
-                           const unsigned int max_n_clause,
+                           unsigned int *d_literals,
+                           unsigned int *d_n_literals,
+                           const unsigned int max_n_literals,
                            unsigned int *d_req_n_literals
                            )
     {
@@ -341,13 +339,13 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
                 else
                     {
                     unsigned int i = s_idx_group[check_group];
-                    if (i < max_num_clauses && check_j < N_local)
+                    if (check_j < N_local)
                         {
-                        // add the literal x_j to the ith clause, if j is not a ghost
-                        unsigned int n = atomicAdd_system(&d_n_clause[i], 1);
+                        // add the literal x_j to a clause for variable i, unless j is a ghost
+                        unsigned int n = atomicAdd(&d_n_literals[i], 1);
 
-                        if (n < max_n_clause)
-                            d_clause[i*max_n_clause + n] = (check_j << 1) | !check_old;
+                        if (n < max_n_literals)
+                            d_literals[i*max_n_literals + n] = (check_j << 1) | !check_old;
                         else
                             atomicMax(&s_max_num_literals, n + 1);
                         }
@@ -366,47 +364,50 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
         __syncthreads();
         } // end while (s_still_searching)
 
-    // write out the propositions in CNF form
-    if (valid_ptl && master && idx < max_num_clauses)
+    if (valid_ptl && master)
         {
-        // the ith clause contains !x_i and all literals x_j that lead to x_i evaluating to true
+        // complete the CNF for particle i
         if (!s_reject_group[group])
             {
-            // for every x_j, generate a new clause xi v !x_j
-            for (unsigned int k = 0; k < d_n_clause[idx] && k < max_n_clause; ++k)
+            // complete the first disjunction
+            unsigned int n = atomicAdd(&d_n_literals[idx], 2);
+            if (n + 1 >= max_n_literals)
+                atomicMax(&s_max_num_literals, n + 2);
+            else
                 {
-                unsigned int l = d_clause[idx*max_n_clause + k];
-                unsigned int v = l >> 1;
-                unsigned int a = l & 1;
+                d_literals[idx*max_n_literals + n] = (idx << 1) | 1; // !x_i
+                d_literals[idx*max_n_literals + n + 1] = SAT_sentinel;
 
-                unsigned int m = atomicAdd_system(d_num_clauses, 1);
-                if (N_local + m < max_num_clauses)
+                // for every x_j, generate a new disjunction x_i v ^x_j
+                for (unsigned int k = 0; k < n && k < max_n_literals; ++k)
                     {
-                    unsigned int n = atomicAdd(&d_n_clause[N_local+m], 1);
-                    if (n < max_n_clause)
-                        d_clause[(m+N_local)*max_n_clause+n] = idx << 1;
-                    n = atomicAdd_system(&d_n_clause[N_local+m], 1);
-                    if (n < max_n_clause)
-                        d_clause[(m+N_local)*max_n_clause+n] = (v << 1) | (a ^ 1);
+                    unsigned int l = d_literals[idx*max_n_literals + k];
+                    unsigned int v = l >> 1;
+                    unsigned int a = l & 1;
+
+                    unsigned int m = atomicAdd(&d_n_literals[idx], 3);
+                    if (m + 2 >= max_n_literals)
+                        atomicMax(&s_max_num_literals, m + 3);
                     else
-                        atomicMax(&s_max_num_literals, n + 1);
+                        {
+                        d_literals[idx*max_n_literals + m] = idx << 1; // x_i
+                        d_literals[idx*max_n_literals + m + 1] = (v << 1) | (a ^ 1); // ^x_j
+                        d_literals[idx*max_n_literals + m + 2] = SAT_sentinel;
+                        }
                     }
                 }
-
-            unsigned int n = atomicAdd_system(&d_n_clause[idx], 1);
-            if (n < max_n_clause)
-                d_clause[idx*max_n_clause + n] = (idx << 1) | 1;
-            else
-                atomicMax(&s_max_num_literals, n + 1);
             }
         else
             {
-            // if i is rejected, the ith clause is a unit
-            d_n_clause[idx] = 1;
-            if (max_n_clause > 0)
-                d_clause[idx*max_n_clause] = idx << 1;
+            // if i is rejected, make the ith clause a unit
+            d_n_literals[idx] = 2;
+            if (max_n_literals > 1)
+                {
+                d_literals[idx*max_n_literals] = idx << 1; // x_i
+                d_literals[idx*max_n_literals + 1] = SAT_sentinel;
+                }
             else
-                atomicMax(&s_max_num_literals, 1);
+                atomicMax(&s_max_num_literals, 2);
             }
         }
 
@@ -416,7 +417,7 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
         {
         unsigned int req_n_literals = s_max_num_literals;
 
-        if (s_max_num_literals > max_n_clause)
+        if (s_max_num_literals > max_n_literals)
             atomicMax(d_req_n_literals, req_n_literals);
         }
 
@@ -432,8 +433,8 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
         {
         // write out counters to global memory
         #if (__CUDA_ARCH__ >= 600)
-        atomicAdd_system(&d_counters->overlap_err_count, s_overlap_err_count);
-        atomicAdd_system(&d_counters->overlap_checks, s_overlap_checks);
+        atomicAdd(&d_counters->overlap_err_count, s_overlap_err_count);
+        atomicAdd(&d_counters->overlap_checks, s_overlap_checks);
         #else
         atomicAdd(&d_counters->overlap_err_count, s_overlap_err_count);
         atomicAdd(&d_counters->overlap_checks, s_overlap_checks);
@@ -549,8 +550,7 @@ void narrow_phase_launcher(const hpmc_args_t& args, const typename Shape::param_
                 args.box, args.ghost_width, args.cell_dim, args.ci, args.N, args.d_check_overlaps,
                 args.overlap_idx, params, args.d_update_order_by_ptl, args.d_reject_in, args.d_reject_out, args.d_reject_out_of_cell,
                 max_extra_bytes, max_queue_size, range.first, nwork,
-                args.d_num_clauses, args.max_num_clauses, args.d_clause, args.d_n_clause, args.max_n_clause,
-                args.d_req_n_literals);
+                args.d_literals, args.d_n_literals, args.max_n_literals, args.d_req_n_literals);
             }
         }
     else

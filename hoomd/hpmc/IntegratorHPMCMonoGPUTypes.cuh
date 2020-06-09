@@ -15,6 +15,9 @@ namespace hpmc {
 
 namespace gpu {
 
+//! Sentinel for the CNF
+const unsigned int SAT_sentinel = 0xffffffff;
+
 //! Wraps arguments to hpmc_* template functions
 /*! \ingroup hpmc_data_structs */
 struct hpmc_args_t
@@ -60,11 +63,9 @@ struct hpmc_args_t
                 const hipDeviceProp_t &_devprop,
                 const GPUPartition& _gpu_partition,
                 const hipStream_t *_streams,
-                unsigned int *_d_num_clauses,
-                const unsigned int _max_num_clauses,
-                unsigned int *_d_clause,
-                unsigned int *_d_n_clause,
-                const unsigned int _max_n_clause,
+                unsigned int *_d_literals,
+                unsigned int *_d_n_literals,
+                const unsigned int _max_n_literals,
                 unsigned int *_d_req_n_literals)
                 : d_postype(_d_postype),
                   d_orientation(_d_orientation),
@@ -106,11 +107,9 @@ struct hpmc_args_t
                   devprop(_devprop),
                   gpu_partition(_gpu_partition),
                   streams(_streams),
-                  d_num_clauses(_d_num_clauses),
-                  max_num_clauses(_max_num_clauses),
-                  d_clause(_d_clause),
-                  d_n_clause(_d_n_clause),
-                  max_n_clause(_max_n_clause),
+                  d_literals(_d_literals),
+                  d_n_literals(_d_n_literals),
+                  max_n_literals(_max_n_literals),
                   d_req_n_literals(_d_req_n_literals)
         {
         };
@@ -155,12 +154,10 @@ struct hpmc_args_t
     const hipDeviceProp_t& devprop;     //!< CUDA device properties
     const GPUPartition& gpu_partition; //!< Multi-GPU partition
     const hipStream_t *streams;        //!< kernel streams
-    unsigned int *d_num_clauses;       //!< Total number of clauses
-    const unsigned int max_num_clauses; //!< How many clauses we can store
-    unsigned int *d_clause;            //!< List of clauses
-    unsigned int *d_n_clause;          //!< Number of literals per clause
-    const unsigned max_n_clause;       //!< Max number of literals per clause
-    unsigned int *d_req_n_literals;    //!< Requested max number of literals per clause
+    unsigned int *d_literals;          //!< Table of literals attached to variables
+    unsigned int *d_n_literals;        //!< Number of literals per literals
+    const unsigned max_n_literals;     //!< Max number of literals per variable
+    unsigned int *d_req_n_literals;    //!< Requested max number of literals per literals
     };
 
 //! Wraps arguments for hpmc_update_pdata
