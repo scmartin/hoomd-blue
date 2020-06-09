@@ -14,6 +14,8 @@ void identify_connected_components(
     unsigned int *d_req_n_columns,
     const unsigned int max_n_columns,
     unsigned int *d_n_columns,
+    unsigned int *d_colidx_table,
+    unsigned int *d_compact_indices,
     unsigned int *d_colidx,
     unsigned int *d_csr_row_ptr,
     const unsigned int n_variables,

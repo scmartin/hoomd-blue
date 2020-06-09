@@ -260,6 +260,8 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         GlobalVector<unsigned int> m_component_ptr;
         GlobalVector<unsigned int> m_representative;
         GlobalArray<unsigned int> m_heap;
+        GlobalArray<unsigned int> m_colidx_table;
+        GlobalArray<unsigned int> m_compact_indices;
         GlobalArray<unsigned int> m_colidx;
         GlobalArray<unsigned int> m_req_n_columns;
         unsigned int m_max_n_columns;
@@ -1618,6 +1620,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
 
                     {
                     ArrayHandle<unsigned int> d_colidx(m_colidx, access_location::device, access_mode::overwrite);
+                    ArrayHandle<unsigned int> d_colidx_table(m_colidx_table, access_location::device, access_mode::overwrite);
+                    ArrayHandle<unsigned int> d_compact_indices(m_compact_indices, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_csr_row_ptr(m_csr_row_ptr, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_n_columns(m_n_columns, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_req_n_columns(m_req_n_columns, access_location::device, access_mode::readwrite);
@@ -1634,6 +1638,8 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                         d_req_n_columns.data,
                         m_max_n_columns,
                         d_n_columns.data,
+                        d_colidx_table.data,
+                        d_compact_indices.data,
                         d_colidx.data,
                         d_csr_row_ptr.data,
                         nvariables,
@@ -1651,8 +1657,16 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 if (req_n_columns > m_max_n_columns)
                     {
                     // reallocate
-                    GlobalArray<unsigned int>(req_n_columns*this->m_pdata->getMaxN(), this->m_exec_conf).swap(m_colidx);
+                    unsigned int nelem = req_n_columns*this->m_pdata->getMaxN();
+                    GlobalArray<unsigned int>(nelem, this->m_exec_conf).swap(m_colidx);
                     TAG_ALLOCATION(m_colidx);
+
+                    GlobalArray<unsigned int>(nelem, this->m_exec_conf).swap(m_colidx_table);
+                    TAG_ALLOCATION(m_colidx_table);
+
+                    GlobalArray<unsigned int>(nelem, this->m_exec_conf).swap(m_compact_indices);
+                    TAG_ALLOCATION(m_compact_indices);
+
                     m_max_n_columns = req_n_columns;
                     done = false;
                     continue;

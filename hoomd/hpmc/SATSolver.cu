@@ -2,18 +2,10 @@
 
 #include <hip/hip_runtime.h>
 
-#include <thrust/device_ptr.h>
-#include <thrust/remove.h>
-#include <thrust/functional.h>
-
 #include <cub/cub.cuh>
-#include <cub/iterator/discard_output_iterator.cuh>
-
 #include "IntegratorHPMCMonoGPUTypes.cuh"
 
 #include "hoomd/extern/ECL.cuh"
-
-using namespace thrust::placeholders;
 
 namespace hpmc {
 
@@ -421,6 +413,31 @@ __global__ void find_dependencies(
         }
     }
 
+struct IsValue
+    {
+    __host__ __device__ __forceinline__
+    unsigned int operator()(const unsigned int& v) const
+        {
+        return v != SAT_sentinel;
+        }
+    };
+
+__global__ void scatter_column_indices(
+    const unsigned int n,
+    const unsigned int *d_colidx_table,
+    const unsigned int *d_compact_indices,
+    unsigned int *d_colidx)
+    {
+    unsigned int tidx = blockIdx.x*blockDim.x+threadIdx.x;
+
+    if (tidx >= n)
+        return;
+
+    unsigned int v = d_colidx_table[tidx];
+    if (IsValue()(v))
+        d_colidx[d_compact_indices[tidx]] = v;
+    }
+
 __global__ void reset_mem(
     const unsigned int n_variables,
     unsigned int *d_head,
@@ -463,6 +480,8 @@ void identify_connected_components(
     unsigned int *d_req_n_columns,
     const unsigned int max_n_columns,
     unsigned int *d_n_columns,
+    unsigned int *d_colidx_table,
+    unsigned int *d_compact_indices,
     unsigned int *d_colidx,
     unsigned int *d_csr_row_ptr,
     const unsigned int n_variables,
@@ -475,7 +494,7 @@ void identify_connected_components(
     hipMemsetAsync(d_n_columns, 0, sizeof(unsigned int)*(n_variables+1));
 
     // prepare the matrix with sentinel values
-    hipMemsetAsync(d_colidx, 0xff, sizeof(unsigned int)*max_n_columns*n_variables);
+    hipMemsetAsync(d_colidx_table, 0xff, sizeof(unsigned int)*max_n_columns*n_variables);
 
     // fill the connnectivity matrix
     hipLaunchKernelGGL(kernel::find_dependencies, n_variables/block_size + 1, block_size, 0, 0,
@@ -485,7 +504,7 @@ void identify_connected_components(
         maxn_literals,
         d_req_n_columns,
         d_n_columns,
-        d_colidx,
+        d_colidx_table,
         max_n_columns);
 
     // reallocate if necessary
@@ -513,14 +532,35 @@ void identify_connected_components(
     alloc.deallocate((char *)d_temp_storage);
 
     // stream compact the column indices
-    // (we're doing it the lazy way, removing unused elements rather than constructing a map into the 2d
-    // array and gathering)
-    thrust::device_ptr<unsigned int> colidx(d_colidx);
-    thrust::remove_if(
-        thrust::cuda::par(alloc),
-        colidx,
-        colidx + n_variables*max_n_columns,
-        _1 == SAT_sentinel);
+
+    // (we're doing it the lazy way, scanning over the entire table instead of constructing a map into the 2d
+    // array and gathering, which might be more efficient)
+
+    unsigned int n = n_variables*max_n_columns;
+    auto is_value = cub::TransformInputIterator<unsigned int, kernel::IsValue, const unsigned int *>(d_colidx_table, kernel::IsValue());
+
+    d_temp_storage = nullptr;
+    temp_storage_bytes = 0;
+    cub::DeviceScan::ExclusiveSum(
+        d_temp_storage,
+        temp_storage_bytes,
+        is_value,
+        d_compact_indices,
+        n);
+    d_temp_storage = alloc.allocate(temp_storage_bytes);
+    cub::DeviceScan::ExclusiveSum(
+        d_temp_storage,
+        temp_storage_bytes,
+        is_value,
+        d_compact_indices,
+        n);
+    alloc.deallocate((char *)d_temp_storage);
+
+    hipLaunchKernelGGL(kernel::scatter_column_indices, n/block_size + 1, block_size, 0, 0,
+        n,
+        d_colidx_table,
+        d_compact_indices,
+        d_colidx);
 
     // find connected components
     ecl_connected_components(
