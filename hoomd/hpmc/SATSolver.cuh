@@ -19,6 +19,7 @@ void identify_connected_components(
     unsigned int *d_work,
     const hipDeviceProp_t devprop,
     const unsigned int block_size,
+    unsigned int literals_per_block,
     CachedAllocator &alloc);
 
 void solve_sat(unsigned int *d_watch,
@@ -36,7 +37,8 @@ void solve_sat(unsigned int *d_watch,
     const unsigned int *d_component_ptr,
     unsigned int *d_representative,
     unsigned int *d_heap,
-    const unsigned int block_size);
+    const unsigned int block_size,
+    unsigned int literals_per_block);
 
 } //end namespace gpu
 } //end namespace hpm

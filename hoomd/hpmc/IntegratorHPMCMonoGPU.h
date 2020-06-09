@@ -172,6 +172,12 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
             m_tuner_excell_block_size->setPeriod(period);
             m_tuner_excell_block_size->setEnabled(enable);
 
+            m_tuner_dependencies->setPeriod(period*this->m_nselect);
+            m_tuner_dependencies->setEnabled(enable);
+
+            m_tuner_mem->setPeriod(period*this->m_nselect);
+            m_tuner_mem->setEnabled(enable);
+
             m_tuner_num_depletants->setPeriod(period*this->m_nselect);
             m_tuner_num_depletants->setEnabled(enable);
 
@@ -230,6 +236,8 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         std::unique_ptr<Autotuner> m_tuner_narrow;           //!< Autotuner for the narrow phase
         std::unique_ptr<Autotuner> m_tuner_update_pdata;    //!< Autotuner for the update step group and block sizes
         std::unique_ptr<Autotuner> m_tuner_excell_block_size;  //!< Autotuner for excell block_size
+        std::unique_ptr<Autotuner> m_tuner_dependencies;     //!< Autotuner for excell block_size
+        std::unique_ptr<Autotuner> m_tuner_mem;              //!< Autotuner simply for resetting the memory for the solver
         std::unique_ptr<Autotuner> m_tuner_depletants;       //!< Autotuner for inserting depletants
         std::unique_ptr<Autotuner> m_tuner_num_depletants;   //!< Autotuner for calculating number of depletants
         std::unique_ptr<Autotuner> m_tuner_num_depletants_ntrial;   //!< Autotuner for calculating number of depletants with ntrial
@@ -335,12 +343,27 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
     m_tuner_moves.reset(new Autotuner(dev_prop.warpSize, dev_prop.maxThreadsPerBlock, dev_prop.warpSize, 5, 1000000, "hpmc_moves", this->m_exec_conf));
     m_tuner_update_pdata.reset(new Autotuner(dev_prop.warpSize, dev_prop.maxThreadsPerBlock, dev_prop.warpSize, 5, 1000000, "hpmc_update_pdata", this->m_exec_conf));
     m_tuner_excell_block_size.reset(new Autotuner(dev_prop.warpSize, dev_prop.maxThreadsPerBlock, dev_prop.warpSize, 5, 1000000, "hpmc_excell_block_size", this->m_exec_conf));
+
+    // tuning parameters for kernels operating on the clauses of the CNF
+    std::vector<unsigned int> valid_params_cnf;
+    unsigned int warp_size = this->m_exec_conf->dev_prop.warpSize;
+    const unsigned int max_literals_block = 64; // a reasonable max
+    for (unsigned int block_size = warp_size; block_size <= (unsigned int) dev_prop.maxThreadsPerBlock; block_size += warp_size)
+        {
+        for (auto l : Autotuner::getTppListPow2(max_literals_block))
+            {
+            if ((l <= block_size) && ((block_size % l) == 0))
+                valid_params_cnf.push_back(block_size*100 + l);
+            }
+        }
+    m_tuner_dependencies.reset(new Autotuner(valid_params_cnf, 5, 100000, "hpmc_dependencies", this->m_exec_conf));
+    m_tuner_mem.reset(new Autotuner(valid_params_cnf, 5, 100000, "hpmc_mem", this->m_exec_conf));
+
     m_tuner_num_depletants.reset(new Autotuner(dev_prop.warpSize, dev_prop.maxThreadsPerBlock, dev_prop.warpSize, 5, 1000000, "hpmc_num_depletants", this->m_exec_conf));
     m_tuner_num_depletants_ntrial.reset(new Autotuner(dev_prop.warpSize, dev_prop.maxThreadsPerBlock, dev_prop.warpSize, 5, 1000000, "hpmc_num_depletants_ntrial", this->m_exec_conf));
 
     // tuning parameters for narrow phase
     std::vector<unsigned int> valid_params;
-    unsigned int warp_size = this->m_exec_conf->dev_prop.warpSize;
     const unsigned int narrow_phase_max_tpp = this->m_exec_conf->dev_prop.maxThreadsDim[2];
     for (unsigned int block_size = warp_size; block_size <= (unsigned int) dev_prop.maxThreadsPerBlock; block_size += warp_size)
         {
@@ -1618,7 +1641,11 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             ArrayHandle<unsigned int> d_component_ptr(m_component_ptr, access_location::device, access_mode::overwrite);
 
             // preprocessing
-            unsigned int block_size = 512;
+            m_tuner_dependencies->begin();
+            unsigned int param = m_tuner_dependencies->getParam();
+            unsigned int block_size = param / 100;
+            unsigned int literals_per_block = param % 100;
+
             gpu::identify_connected_components(
                 m_max_n_literals,
                 d_literals.data,
@@ -1632,10 +1659,12 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 d_work.data,
                 this->m_exec_conf->dev_prop,
                 block_size,
+                literals_per_block,
                 this->m_exec_conf->getCachedAllocator());
 
             if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
                 CHECK_CUDA_ERROR();
+            m_tuner_dependencies->end();
 
             m_watch.resize(nliterals);
             m_next_clause.resize(nvariables*m_max_n_literals);
@@ -1659,7 +1688,11 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 {
                 ArrayHandle<unsigned int> d_unsat(m_unsat, access_location::device, access_mode::overwrite);
 
-                unsigned int block_size = 512;
+                m_tuner_mem->begin();
+                unsigned int param = m_tuner_mem->getParam();
+                unsigned int block_size = param / 100;
+                unsigned int literals_per_block = param % 100;
+
                 gpu::solve_sat(
                     d_watch.data,
                     d_next_clause.data,
@@ -1676,9 +1709,11 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     d_component_ptr.data,
                     d_representative.data,
                     d_heap.data,
-                    block_size);
+                    block_size,
+                    literals_per_block);
                 if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
                     CHECK_CUDA_ERROR();
+                m_tuner_mem->end();
                 }
 
             if (this->m_exec_conf->isCUDAErrorCheckingEnabled())

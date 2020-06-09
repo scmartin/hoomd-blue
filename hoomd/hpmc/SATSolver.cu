@@ -381,13 +381,15 @@ __global__ void find_dependencies(
     if (tidx >= n_variables)
         return;
 
-    unsigned int nlit = d_n_literals[tidx];
-    unsigned int prev = SAT_sentinel;
+    const unsigned int literal = threadIdx.y + blockIdx.y*blockDim.y;
 
-    // merge all elements in each clause asssociated with this variable, generating 2(n-1) edges per clause
-    for (unsigned int j = 0; j < nlit; ++j)
+    unsigned int nlit = d_n_literals[tidx];
+
+    if (literal < nlit)
         {
-        unsigned int l = d_literals[tidx*maxn_literals+j];
+        // merge all elements in each clause asssociated with this variable, generating 2(n-1) edges per clause
+        unsigned int prev = literal > 0 ? d_literals[tidx*maxn_literals + literal - 1] : SAT_sentinel;
+        unsigned int l = d_literals[tidx*maxn_literals+literal];
 
         if (prev != SAT_sentinel && l != SAT_sentinel)
             {
@@ -401,19 +403,8 @@ __global__ void find_dependencies(
             k = atomicAdd(&d_n_columns[w], 1);
             d_colidx[w*max_n_columns+k] = v;
             }
-
-        prev = l;
         }
     }
-
-struct IsValue
-    {
-    __host__ __device__ __forceinline__
-    unsigned int operator()(const unsigned int& v) const
-        {
-        return v != SAT_sentinel;
-        }
-    };
 
 __global__ void scatter_rows(
     const unsigned int n_variables,
@@ -449,22 +440,25 @@ __global__ void reset_mem(
     unsigned int *d_heap)
     {
     unsigned int tidx = threadIdx.x+blockDim.x*blockIdx.x;
+    unsigned int literal = threadIdx.y+blockDim.y*blockIdx.y;
 
     if (tidx >= n_variables)
         return;
 
-    if (tidx == 0)
+    if (tidx == 0 && literal == 0)
         {
         *d_unsat = 0;
         *d_heap = 0;
         }
 
-    d_head[tidx] = SAT_sentinel;
-    d_next[tidx] = SAT_sentinel;
-    d_watch[tidx << 1] = d_watch[(tidx << 1) | 1] = SAT_sentinel;
+    if (literal == 0)
+        {
+        d_head[tidx] = SAT_sentinel;
+        d_next[tidx] = SAT_sentinel;
+        d_watch[tidx << 1] = d_watch[(tidx << 1) | 1] = SAT_sentinel;
+        }
 
-    unsigned int n = d_n_literals[tidx];
-    for (unsigned int literal = 0; literal < n; ++literal)
+    if (literal < d_n_literals[tidx])
         d_next_clause[tidx*maxn_literals+literal] = SAT_sentinel;
     }
 
@@ -484,13 +478,27 @@ void identify_connected_components(
     unsigned int *d_work,
     const hipDeviceProp_t devprop,
     const unsigned int block_size,
+    unsigned int literals_per_block,
     CachedAllocator &alloc)
     {
     hipMemsetAsync(d_n_columns, 0, sizeof(unsigned int)*(n_variables+1));
 
+    static int max_block_size = -1;
+    static hipFuncAttributes attr;
+    if (max_block_size == -1)
+        {
+        hipFuncGetAttributes(&attr, reinterpret_cast<const void*>(kernel::find_dependencies));
+        max_block_size = attr.maxThreadsPerBlock;
+        }
+    unsigned int run_block_size = min(max_block_size, block_size);
+    while (run_block_size % literals_per_block)
+        literals_per_block--;
+
     // fill the connnectivity matrix
     unsigned int max_n_columns = 2*maxn_literals;
-    hipLaunchKernelGGL(kernel::find_dependencies, n_variables/block_size + 1, block_size, 0, 0,
+    dim3 grid(n_variables*literals_per_block/run_block_size + 1, maxn_literals/literals_per_block + 1, 1);
+    dim3 block(run_block_size/literals_per_block, literals_per_block, 1);
+    hipLaunchKernelGGL(kernel::find_dependencies, grid, block, 0, 0,
         n_variables,
         d_n_literals,
         d_literals,
@@ -554,10 +562,24 @@ void solve_sat(
     const unsigned int *d_component_ptr,
     unsigned int *d_representative,
     unsigned int *d_heap,
-    const unsigned int block_size)
+    const unsigned int block_size,
+    unsigned int literals_per_block)
     {
+    static int max_block_size = -1;
+    static hipFuncAttributes attr;
+    if (max_block_size == -1)
+        {
+        hipFuncGetAttributes(&attr, reinterpret_cast<const void*>(kernel::reset_mem));
+        max_block_size = attr.maxThreadsPerBlock;
+        }
+
     // initialize memory
-    hipLaunchKernelGGL(kernel::reset_mem, n_variables/block_size + 1, block_size, 0, 0,
+    unsigned int run_block_size = min(max_block_size, block_size);
+    while (run_block_size % literals_per_block)
+        literals_per_block--;
+    dim3 grid(n_variables*literals_per_block/run_block_size + 1, maxn_literals/literals_per_block + 1, 1);
+    dim3 block(run_block_size/literals_per_block, literals_per_block, 1);
+    hipLaunchKernelGGL(kernel::reset_mem, grid, block, 0, 0,
         n_variables,
         d_head,
         d_next,
