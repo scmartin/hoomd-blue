@@ -22,7 +22,8 @@ void identify_connected_components(
     unsigned int literals_per_block,
     CachedAllocator &alloc);
 
-void solve_sat(unsigned int *d_watch,
+void initialize_sat_mem(
+    unsigned int *d_watch,
     unsigned int *d_next_clause,
     unsigned int *d_head,
     unsigned int *d_next,
@@ -39,6 +40,23 @@ void solve_sat(unsigned int *d_watch,
     unsigned int *d_heap,
     const unsigned int block_size,
     unsigned int literals_per_block);
+
+void solve_sat(unsigned int *d_watch,
+    unsigned int *d_next_clause,
+    unsigned int *d_head,
+    unsigned int *d_next,
+    unsigned int *d_h,
+    unsigned int *d_state,
+    const unsigned int maxn_literals,
+    const unsigned int *d_literals,
+    const unsigned int *d_n_literals,
+    unsigned int *d_assignment,
+    const unsigned int n_variables,
+    unsigned int *d_unsat,
+    const unsigned int *d_component_ptr,
+    unsigned int *d_representative,
+    unsigned int *d_heap,
+    const unsigned int block_size);
 
 } //end namespace gpu
 } //end namespace hpm

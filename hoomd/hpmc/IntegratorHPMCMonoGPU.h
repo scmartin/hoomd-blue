@@ -178,6 +178,9 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
             m_tuner_mem->setPeriod(period*this->m_nselect);
             m_tuner_mem->setEnabled(enable);
 
+            m_tuner_sat->setPeriod(period*this->m_nselect);
+            m_tuner_sat->setEnabled(enable);
+
             m_tuner_num_depletants->setPeriod(period*this->m_nselect);
             m_tuner_num_depletants->setEnabled(enable);
 
@@ -238,6 +241,7 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         std::unique_ptr<Autotuner> m_tuner_excell_block_size;  //!< Autotuner for excell block_size
         std::unique_ptr<Autotuner> m_tuner_dependencies;     //!< Autotuner for excell block_size
         std::unique_ptr<Autotuner> m_tuner_mem;              //!< Autotuner simply for resetting the memory for the solver
+        std::unique_ptr<Autotuner> m_tuner_sat;              //!< Autotuner for the SAT solver
         std::unique_ptr<Autotuner> m_tuner_depletants;       //!< Autotuner for inserting depletants
         std::unique_ptr<Autotuner> m_tuner_num_depletants;   //!< Autotuner for calculating number of depletants
         std::unique_ptr<Autotuner> m_tuner_num_depletants_ntrial;   //!< Autotuner for calculating number of depletants with ntrial
@@ -358,6 +362,8 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
         }
     m_tuner_dependencies.reset(new Autotuner(valid_params_cnf, 5, 100000, "hpmc_dependencies", this->m_exec_conf));
     m_tuner_mem.reset(new Autotuner(valid_params_cnf, 5, 100000, "hpmc_mem", this->m_exec_conf));
+
+    m_tuner_sat.reset(new Autotuner(dev_prop.warpSize, dev_prop.maxThreadsPerBlock, dev_prop.warpSize, 5, 1000000, "hpmc_sat", this->m_exec_conf));
 
     m_tuner_num_depletants.reset(new Autotuner(dev_prop.warpSize, dev_prop.maxThreadsPerBlock, dev_prop.warpSize, 5, 1000000, "hpmc_num_depletants", this->m_exec_conf));
     m_tuner_num_depletants_ntrial.reset(new Autotuner(dev_prop.warpSize, dev_prop.maxThreadsPerBlock, dev_prop.warpSize, 5, 1000000, "hpmc_num_depletants_ntrial", this->m_exec_conf));
@@ -1693,7 +1699,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 unsigned int block_size = param / 100;
                 unsigned int literals_per_block = param % 100;
 
-                gpu::solve_sat(
+                gpu::initialize_sat_mem(
                     d_watch.data,
                     d_next_clause.data,
                     d_head.data,
@@ -1714,6 +1720,28 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
                     CHECK_CUDA_ERROR();
                 m_tuner_mem->end();
+
+                m_tuner_sat->begin();
+                gpu::solve_sat(
+                    d_watch.data,
+                    d_next_clause.data,
+                    d_head.data,
+                    d_next.data,
+                    d_h.data,
+                    d_state.data,
+                    m_max_n_literals,
+                    d_literals.data,
+                    d_n_literals.data,
+                    d_reject.data,
+                    nvariables,
+                    d_unsat.data,
+                    d_component_ptr.data,
+                    d_representative.data,
+                    d_heap.data,
+                    m_tuner_sat->getParam());
+                if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
+                    CHECK_CUDA_ERROR();
+                m_tuner_sat->end();
                 }
 
             if (this->m_exec_conf->isCUDAErrorCheckingEnabled())

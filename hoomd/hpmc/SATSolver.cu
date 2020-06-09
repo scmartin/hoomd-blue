@@ -545,8 +545,8 @@ void identify_connected_components(
         false);
     }
 
-// solve the satisfiability problem
-void solve_sat(
+// initialie the memory for SAT
+void initialize_sat_mem(
     unsigned int *d_watch,
     unsigned int *d_next_clause,
     unsigned int *d_head,
@@ -609,9 +609,28 @@ void solve_sat(
         d_representative,
         d_head,
         d_next);
+    }
 
-    // solve the system of Boolean equations
-    hipLaunchKernelGGL(kernel::solve_sat, n_variables/sat_block_size + 1, sat_block_size, 0, 0,
+// solve the Boolean formula
+void solve_sat(
+    unsigned int *d_watch,
+    unsigned int *d_next_clause,
+    unsigned int *d_head,
+    unsigned int *d_next,
+    unsigned int *d_h,
+    unsigned int *d_state,
+    const unsigned int maxn_literals,
+    const unsigned int *d_literals,
+    const unsigned int *d_n_literals,
+    unsigned int *d_assignment,
+    const unsigned int n_variables,
+    unsigned int *d_unsat,
+    const unsigned int *d_component_ptr,
+    unsigned int *d_representative,
+    unsigned int *d_heap,
+    const unsigned int block_size)
+    {
+    hipLaunchKernelGGL(kernel::solve_sat, n_variables/block_size + 1, block_size, 0, 0,
         d_watch,
         d_next_clause,
         d_next,
