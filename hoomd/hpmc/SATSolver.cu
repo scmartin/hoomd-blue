@@ -372,7 +372,6 @@ __global__ void find_dependencies(
     const unsigned int *d_n_literals,
     const unsigned int *d_literals,
     const unsigned int maxn_literals,
-    unsigned int *d_req_n_columns,
     unsigned int *d_n_columns,
     unsigned int *d_colidx,
     const unsigned int max_n_columns)
@@ -395,18 +394,12 @@ __global__ void find_dependencies(
             unsigned int v = l >> 1;
             unsigned int w = prev >> 1;
 
-            // add undirected edge
+            // add undirected edge (need to make sure to have sufficient storage)
             unsigned int k = atomicAdd(&d_n_columns[v], 1);
-            if (k < max_n_columns)
-                d_colidx[v*max_n_columns+k] = w;
-            else
-                atomicMax(d_req_n_columns, k + 1);
+            d_colidx[v*max_n_columns+k] = w;
 
             k = atomicAdd(&d_n_columns[w], 1);
-            if (k < max_n_columns)
-                d_colidx[w*max_n_columns+k] = v;
-            else
-                atomicMax(d_req_n_columns, k + 1);
+            d_colidx[w*max_n_columns+k] = v;
             }
 
         prev = l;
@@ -476,9 +469,6 @@ void identify_connected_components(
     const unsigned int maxn_literals,
     const unsigned int *d_literals,
     const unsigned int *d_n_literals,
-    unsigned int &req_n_columns,
-    unsigned int *d_req_n_columns,
-    const unsigned int max_n_columns,
     unsigned int *d_n_columns,
     unsigned int *d_colidx_table,
     unsigned int *d_compact_indices,
@@ -494,6 +484,7 @@ void identify_connected_components(
     hipMemsetAsync(d_n_columns, 0, sizeof(unsigned int)*(n_variables+1));
 
     // prepare the matrix with sentinel values
+    unsigned int max_n_columns = maxn_literals;
     hipMemsetAsync(d_colidx_table, 0xff, sizeof(unsigned int)*max_n_columns*n_variables);
 
     // fill the connnectivity matrix
@@ -502,16 +493,9 @@ void identify_connected_components(
         d_n_literals,
         d_literals,
         maxn_literals,
-        d_req_n_columns,
         d_n_columns,
         d_colidx_table,
         max_n_columns);
-
-    // reallocate if necessary
-    hipMemcpy(&req_n_columns, d_req_n_columns, sizeof(unsigned int), hipMemcpyDeviceToHost);
-
-    if (req_n_columns > max_n_columns)
-        return;
 
     // construct a CSR matrix
     void *d_temp_storage = nullptr;

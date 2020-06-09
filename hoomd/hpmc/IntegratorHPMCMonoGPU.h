@@ -260,11 +260,9 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         GlobalVector<unsigned int> m_component_ptr;
         GlobalVector<unsigned int> m_representative;
         GlobalArray<unsigned int> m_heap;
-        GlobalArray<unsigned int> m_colidx_table;
-        GlobalArray<unsigned int> m_compact_indices;
-        GlobalArray<unsigned int> m_colidx;
-        GlobalArray<unsigned int> m_req_n_columns;
-        unsigned int m_max_n_columns;
+        GlobalVector<unsigned int> m_colidx_table;
+        GlobalVector<unsigned int> m_compact_indices;
+        GlobalVector<unsigned int> m_colidx;
 
         GlobalVector<unsigned int> m_n_columns;
         GlobalVector<unsigned int> m_csr_row_ptr;
@@ -424,17 +422,17 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
     GlobalArray<unsigned int>(1, this->m_exec_conf).swap(m_heap);
     TAG_ALLOCATION(m_heap);
 
-    GlobalArray<unsigned int>(1, this->m_exec_conf).swap(m_req_n_columns);
-    TAG_ALLOCATION(m_req_n_columns);
-        {
-        // reset req_n_columns flag
-        ArrayHandle<unsigned int> h_req_n_columns(m_req_n_columns, access_location::host, access_mode::overwrite);
-        *h_req_n_columns.data = 0;
-        }
-    m_max_n_columns = 0;
-
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_n_columns);
     TAG_ALLOCATION(m_n_columns);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_colidx);
+    TAG_ALLOCATION(m_colidx);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_colidx_table);
+    TAG_ALLOCATION(m_colidx_table);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_compact_indices);
+    TAG_ALLOCATION(m_compact_indices);
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_csr_row_ptr);
     TAG_ALLOCATION(m_csr_row_ptr);
@@ -1599,8 +1597,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 } // end patch energy
             #endif
 
-            bool done = false;
-
             unsigned int nvariables = this->m_pdata->getN();
             unsigned int nliterals = 2*nvariables;
             m_component_ptr.resize(nvariables);
@@ -1608,71 +1604,45 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             m_csr_row_ptr.resize(nvariables+1);
             m_work.resize(nvariables);
 
+            unsigned int max_nedges = 2*m_literals.getNumElements();
+            m_colidx_table.resize(max_nedges);
+            m_colidx.resize(max_nedges);
+            m_compact_indices.resize(max_nedges);
+
             if (this->m_prof) this->m_prof->push(this->m_exec_conf, "SAT");
 
-            do
-                {
-                // CNF
-                ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::read);
-                ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::read);
+            // CNF
+            ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::read);
+            ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::read);
 
-                unsigned int req_n_columns = 0;
+            ArrayHandle<unsigned int> d_colidx(m_colidx, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_colidx_table(m_colidx_table, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_compact_indices(m_compact_indices, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_csr_row_ptr(m_csr_row_ptr, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_n_columns(m_n_columns, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_work(m_work, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_component_ptr(m_component_ptr, access_location::device, access_mode::overwrite);
 
-                    {
-                    ArrayHandle<unsigned int> d_colidx(m_colidx, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_colidx_table(m_colidx_table, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_compact_indices(m_compact_indices, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_csr_row_ptr(m_csr_row_ptr, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_n_columns(m_n_columns, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_req_n_columns(m_req_n_columns, access_location::device, access_mode::readwrite);
-                    ArrayHandle<unsigned int> d_work(m_work, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_component_ptr(m_component_ptr, access_location::device, access_mode::overwrite);
+            // preprocessing
+            unsigned int block_size = 512;
+            gpu::identify_connected_components(
+                m_max_n_literals,
+                d_literals.data,
+                d_n_literals.data,
+                d_n_columns.data,
+                d_colidx_table.data,
+                d_compact_indices.data,
+                d_colidx.data,
+                d_csr_row_ptr.data,
+                nvariables,
+                d_component_ptr.data,
+                d_work.data,
+                this->m_exec_conf->dev_prop,
+                block_size,
+                this->m_exec_conf->getCachedAllocator());
 
-                    // preprocessing
-                    unsigned int block_size = 512;
-                    gpu::identify_connected_components(
-                        m_max_n_literals,
-                        d_literals.data,
-                        d_n_literals.data,
-                        req_n_columns,
-                        d_req_n_columns.data,
-                        m_max_n_columns,
-                        d_n_columns.data,
-                        d_colidx_table.data,
-                        d_compact_indices.data,
-                        d_colidx.data,
-                        d_csr_row_ptr.data,
-                        nvariables,
-                        d_component_ptr.data,
-                        d_work.data,
-                        this->m_exec_conf->dev_prop,
-                        block_size,
-                        this->m_exec_conf->getCachedAllocator());
-
-                    if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
-                        CHECK_CUDA_ERROR();
-                    }
-
-                done = true;
-                if (req_n_columns > m_max_n_columns)
-                    {
-                    // reallocate
-                    unsigned int nelem = req_n_columns*this->m_pdata->getMaxN();
-                    GlobalArray<unsigned int>(nelem, this->m_exec_conf).swap(m_colidx);
-                    TAG_ALLOCATION(m_colidx);
-
-                    GlobalArray<unsigned int>(nelem, this->m_exec_conf).swap(m_colidx_table);
-                    TAG_ALLOCATION(m_colidx_table);
-
-                    GlobalArray<unsigned int>(nelem, this->m_exec_conf).swap(m_compact_indices);
-                    TAG_ALLOCATION(m_compact_indices);
-
-                    m_max_n_columns = req_n_columns;
-                    done = false;
-                    continue;
-                    }
-                }
-            while (!done);
+            if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
+                CHECK_CUDA_ERROR();
 
             m_watch.resize(nliterals);
             m_next_clause.resize(nvariables*m_max_n_literals);
@@ -1681,13 +1651,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             m_h.resize(nvariables);
             m_state.resize(nvariables);
             m_representative.resize(nvariables);
-
-            // a pointer allowing traversal of connected components
-            ArrayHandle<unsigned int> d_component_ptr(m_component_ptr, access_location::device, access_mode::read);
-
-            // CNF
-            ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::read);
-            ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::read);
 
             // temporary variables for solver
             ArrayHandle<unsigned int> d_watch(m_watch, access_location::device, access_mode::overwrite);
