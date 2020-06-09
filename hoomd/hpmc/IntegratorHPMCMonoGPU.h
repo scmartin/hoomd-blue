@@ -260,10 +260,11 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         GlobalVector<unsigned int> m_component_ptr;
         GlobalVector<unsigned int> m_representative;
         GlobalArray<unsigned int> m_heap;
-        GlobalArray<unsigned int> m_rowidx;
         GlobalArray<unsigned int> m_colidx;
-        GlobalArray<unsigned int> m_rowidx_alt;
-        GlobalArray<unsigned int> m_colidx_alt;
+        GlobalArray<unsigned int> m_req_n_columns;
+        unsigned int m_max_n_columns;
+
+        GlobalVector<unsigned int> m_n_columns;
         GlobalVector<unsigned int> m_csr_row_ptr;
         GlobalArray<unsigned int> m_n_elem;
         GlobalVector<unsigned int> m_work;
@@ -420,6 +421,18 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
 
     GlobalArray<unsigned int>(1, this->m_exec_conf).swap(m_heap);
     TAG_ALLOCATION(m_heap);
+
+    GlobalArray<unsigned int>(1, this->m_exec_conf).swap(m_req_n_columns);
+    TAG_ALLOCATION(m_req_n_columns);
+        {
+        // reset req_n_columns flag
+        ArrayHandle<unsigned int> h_req_n_columns(m_req_n_columns, access_location::host, access_mode::overwrite);
+        *h_req_n_columns.data = 0;
+        }
+    m_max_n_columns = 0;
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_n_columns);
+    TAG_ALLOCATION(m_n_columns);
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_csr_row_ptr);
     TAG_ALLOCATION(m_csr_row_ptr);
@@ -1589,6 +1602,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             unsigned int nvariables = this->m_pdata->getN();
             unsigned int nliterals = 2*nvariables;
             m_component_ptr.resize(nvariables);
+            m_n_columns.resize(nvariables);
             m_csr_row_ptr.resize(nvariables+1);
             m_work.resize(nvariables);
 
@@ -1600,15 +1614,13 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::read);
                 ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::read);
 
-                unsigned int n_elem = 0;
+                unsigned int req_n_columns = 0;
 
                     {
-                    ArrayHandle<unsigned int> d_rowidx(m_rowidx, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_colidx(m_colidx, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_rowidx_alt(m_rowidx_alt, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_colidx_alt(m_colidx_alt, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_csr_row_ptr(m_csr_row_ptr, access_location::device, access_mode::overwrite);
-                    ArrayHandle<unsigned int> d_n_elem(m_n_elem, access_location::device, access_mode::overwrite);
+                    ArrayHandle<unsigned int> d_n_columns(m_n_columns, access_location::device, access_mode::overwrite);
+                    ArrayHandle<unsigned int> d_req_n_columns(m_req_n_columns, access_location::device, access_mode::readwrite);
                     ArrayHandle<unsigned int> d_work(m_work, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_component_ptr(m_component_ptr, access_location::device, access_mode::overwrite);
 
@@ -1618,13 +1630,11 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                         m_max_n_literals,
                         d_literals.data,
                         d_n_literals.data,
-                        d_n_elem.data,
-                        n_elem,
-                        m_rowidx.getNumElements(),
-                        d_rowidx.data,
-                        d_rowidx_alt.data,
+                        req_n_columns,
+                        d_req_n_columns.data,
+                        m_max_n_columns,
+                        d_n_columns.data,
                         d_colidx.data,
-                        d_colidx_alt.data,
                         d_csr_row_ptr.data,
                         nvariables,
                         d_component_ptr.data,
@@ -1638,16 +1648,12 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     }
 
                 done = true;
-                if (n_elem > m_rowidx.getNumElements())
+                if (req_n_columns > m_max_n_columns)
                     {
-                    GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_rowidx);
-                    TAG_ALLOCATION(m_rowidx);
-                    GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_rowidx_alt);
-                    TAG_ALLOCATION(m_rowidx_alt);
-                    GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_colidx);
+                    // reallocate
+                    GlobalArray<unsigned int>(req_n_columns*this->m_pdata->getMaxN(), this->m_exec_conf).swap(m_colidx);
                     TAG_ALLOCATION(m_colidx);
-                    GlobalArray<unsigned int>(n_elem, this->m_exec_conf).swap(m_colidx_alt);
-                    TAG_ALLOCATION(m_colidx_alt);
+                    m_max_n_columns = req_n_columns;
                     done = false;
                     continue;
                     }

@@ -3,13 +3,8 @@
 #include <hip/hip_runtime.h>
 
 #include <thrust/device_ptr.h>
-#include <thrust/sort.h>
-#include <thrust/copy.h>
-#include <thrust/binary_search.h>
-#include <thrust/adjacent_difference.h>
-#include <thrust/iterator/counting_iterator.h>
-#include <thrust/iterator/constant_iterator.h>
-#include <thrust/iterator/discard_iterator.h>
+#include <thrust/remove.h>
+#include <thrust/functional.h>
 
 #include <cub/cub.cuh>
 #include <cub/iterator/discard_output_iterator.cuh>
@@ -17,6 +12,8 @@
 #include "IntegratorHPMCMonoGPUTypes.cuh"
 
 #include "hoomd/extern/ECL.cuh"
+
+using namespace thrust::placeholders;
 
 namespace hpmc {
 
@@ -383,10 +380,10 @@ __global__ void find_dependencies(
     const unsigned int *d_n_literals,
     const unsigned int *d_literals,
     const unsigned int maxn_literals,
-    unsigned int *d_n_elem,
-    unsigned int *d_rowidx,
+    unsigned int *d_req_n_columns,
+    unsigned int *d_n_columns,
     unsigned int *d_colidx,
-    const unsigned int max_n_elem)
+    const unsigned int max_n_columns)
     {
     const unsigned int tidx = threadIdx.x + blockIdx.x*blockDim.x;
 
@@ -406,13 +403,18 @@ __global__ void find_dependencies(
             unsigned int v = l >> 1;
             unsigned int w = prev >> 1;
 
-            // add bidirectional edge
-            unsigned int k = atomicAdd(d_n_elem, 2);
-            if (k + 1 < max_n_elem)
-                {
-                d_rowidx[k] = d_colidx[k+1] = v;
-                d_colidx[k] = d_rowidx[k+1] = w;
-                }
+            // add undirected edge
+            unsigned int k = atomicAdd(&d_n_columns[v], 1);
+            if (k < max_n_columns)
+                d_colidx[v*max_n_columns+k] = w;
+            else
+                atomicMax(d_req_n_columns, k + 1);
+
+            k = atomicAdd(&d_n_columns[w], 1);
+            if (k < max_n_columns)
+                d_colidx[w*max_n_columns+k] = v;
+            else
+                atomicMax(d_req_n_columns, k + 1);
             }
 
         prev = l;
@@ -457,13 +459,11 @@ void identify_connected_components(
     const unsigned int maxn_literals,
     const unsigned int *d_literals,
     const unsigned int *d_n_literals,
-    unsigned int *d_n_elem,
-    unsigned int &n_elem,
-    const unsigned int max_n_elem,
-    unsigned int *d_rowidx,
-    unsigned int *d_rowidx_alt,
+    unsigned int &req_n_columns,
+    unsigned int *d_req_n_columns,
+    const unsigned int max_n_columns,
+    unsigned int *d_n_columns,
     unsigned int *d_colidx,
-    unsigned int *d_colidx_alt,
     unsigned int *d_csr_row_ptr,
     const unsigned int n_variables,
     unsigned int *d_component_ptr,
@@ -472,7 +472,10 @@ void identify_connected_components(
     const unsigned int block_size,
     CachedAllocator &alloc)
     {
-    hipMemsetAsync(d_n_elem, 0, sizeof(unsigned int));
+    hipMemsetAsync(d_n_columns, 0, sizeof(unsigned int)*(n_variables+1));
+
+    // prepare the matrix with sentinel values
+    hipMemsetAsync(d_colidx, 0xff, sizeof(unsigned int)*max_n_columns*n_variables);
 
     // fill the connnectivity matrix
     hipLaunchKernelGGL(kernel::find_dependencies, n_variables/block_size + 1, block_size, 0, 0,
@@ -480,53 +483,50 @@ void identify_connected_components(
         d_n_literals,
         d_literals,
         maxn_literals,
-        d_n_elem,
-        d_rowidx,
+        d_req_n_columns,
+        d_n_columns,
         d_colidx,
-        max_n_elem);
+        max_n_columns);
 
-    // construct a CSR matrix
-    hipMemcpy(&n_elem, d_n_elem, sizeof(unsigned int), hipMemcpyDeviceToHost);
+    // reallocate if necessary
+    hipMemcpy(&req_n_columns, d_req_n_columns, sizeof(unsigned int), hipMemcpyDeviceToHost);
 
-    if (n_elem > max_n_elem)
+    if (req_n_columns > max_n_columns)
         return;
 
-    // COO -> CSR
-    cub::DoubleBuffer<unsigned int> d_keys(d_rowidx, d_rowidx_alt);
-    cub::DoubleBuffer<unsigned int> d_values(d_colidx, d_colidx_alt);
+    // construct a CSR matrix
     void *d_temp_storage = nullptr;
     size_t temp_storage_bytes = 0;
-    cub::DeviceRadixSort::SortPairs(
+    cub::DeviceScan::ExclusiveSum(
         d_temp_storage,
         temp_storage_bytes,
-        d_keys,
-        d_values,
-        n_elem);
+        d_n_columns,
+        d_csr_row_ptr,
+        n_variables+1);
     d_temp_storage = alloc.allocate(temp_storage_bytes);
-    cub::DeviceRadixSort::SortPairs(
+    cub::DeviceScan::ExclusiveSum(
         d_temp_storage,
         temp_storage_bytes,
-        d_keys,
-        d_values,
-        n_elem);
+        d_n_columns,
+        d_csr_row_ptr,
+        n_variables+1);
     alloc.deallocate((char *)d_temp_storage);
 
-    thrust::device_ptr<unsigned int> rowidx(d_keys.Current());
-    thrust::counting_iterator<unsigned int> rows_begin(0);
-    thrust::device_ptr<unsigned int> csr_row_ptr(d_csr_row_ptr);
-    thrust::lower_bound(
+    // stream compact the column indices
+    // (we're doing it the lazy way, removing unused elements rather than constructing a map into the 2d
+    // array and gathering)
+    thrust::device_ptr<unsigned int> colidx(d_colidx);
+    thrust::remove_if(
         thrust::cuda::par(alloc),
-        rowidx,
-        rowidx + n_elem,
-        rows_begin,
-        rows_begin + n_variables + 1,
-        csr_row_ptr);
+        colidx,
+        colidx + n_variables*max_n_columns,
+        _1 == SAT_sentinel);
 
     // find connected components
     ecl_connected_components(
         n_variables,
         (const int *) d_csr_row_ptr,
-        (const int *) d_values.Current(),
+        (const int *) d_colidx,
         (int *) d_component_ptr,
         (int *) d_work,
         devprop,
