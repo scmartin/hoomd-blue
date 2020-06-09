@@ -276,7 +276,6 @@ void flatten(const int nodes, const int* const __restrict__ nidx, const int* con
 /*! Label connected components
 
     \param nodes number of vertices in the graph
-    \param edges Number of edges in the graph
     \param d_nidx the CSR row ptr of the adjacency matrix
     \param d_nlist the CSR column index
     \param d_nstat (ouput) the node labels, if assign_components is true, otherwise a list of pointers to itself
@@ -286,7 +285,6 @@ void flatten(const int nodes, const int* const __restrict__ nidx, const int* con
                              if false, return pointers in d_nstat for components traversal
  */
 inline void ecl_connected_components(const int nodes,
-    const int edges,
     const int *d_nidx,
     const int *d_nlist,
     int *d_nstat,

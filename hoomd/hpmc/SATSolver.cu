@@ -493,7 +493,6 @@ void identify_connected_components(
     // find connected components
     ecl_connected_components(
         n_variables,
-        n_elem,
         (const int *) d_csr_row_ptr,
         (const int *) d_values.Current(),
         (int *) d_component_ptr,

@@ -340,7 +340,6 @@ void connected_components(
     // compute the connected components
     ecl_connected_components(
         nverts,
-        nnz,
         d_csr_rowptr,
         d_colidx,
         d_components,
