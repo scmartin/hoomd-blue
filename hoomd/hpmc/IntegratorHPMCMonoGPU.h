@@ -261,7 +261,6 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         GlobalVector<unsigned int> m_representative;
         GlobalArray<unsigned int> m_heap;
         GlobalVector<unsigned int> m_colidx_table;
-        GlobalVector<unsigned int> m_compact_indices;
         GlobalVector<unsigned int> m_colidx;
 
         GlobalVector<unsigned int> m_n_columns;
@@ -430,9 +429,6 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_colidx_table);
     TAG_ALLOCATION(m_colidx_table);
-
-    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_compact_indices);
-    TAG_ALLOCATION(m_compact_indices);
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_csr_row_ptr);
     TAG_ALLOCATION(m_csr_row_ptr);
@@ -1607,7 +1603,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             unsigned int max_nedges = 2*m_literals.getNumElements();
             m_colidx_table.resize(max_nedges);
             m_colidx.resize(max_nedges);
-            m_compact_indices.resize(max_nedges);
 
             if (this->m_prof) this->m_prof->push(this->m_exec_conf, "SAT");
 
@@ -1617,7 +1612,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
 
             ArrayHandle<unsigned int> d_colidx(m_colidx, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_colidx_table(m_colidx_table, access_location::device, access_mode::overwrite);
-            ArrayHandle<unsigned int> d_compact_indices(m_compact_indices, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_csr_row_ptr(m_csr_row_ptr, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_n_columns(m_n_columns, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_work(m_work, access_location::device, access_mode::overwrite);
@@ -1631,7 +1625,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 d_n_literals.data,
                 d_n_columns.data,
                 d_colidx_table.data,
-                d_compact_indices.data,
                 d_colidx.data,
                 d_csr_row_ptr.data,
                 nvariables,

@@ -415,20 +415,26 @@ struct IsValue
         }
     };
 
-__global__ void scatter_column_indices(
-    const unsigned int n,
+__global__ void scatter_rows(
+    const unsigned int n_variables,
+    const unsigned int maxn_columns,
+    const unsigned int *d_n_columns,
+    const unsigned int *d_csr_row_ptr,
     const unsigned int *d_colidx_table,
-    const unsigned int *d_compact_indices,
     unsigned int *d_colidx)
     {
     unsigned int tidx = blockIdx.x*blockDim.x+threadIdx.x;
 
-    if (tidx >= n)
+    if (tidx >= n_variables)
         return;
 
-    unsigned int v = d_colidx_table[tidx];
-    if (IsValue()(v))
-        d_colidx[d_compact_indices[tidx]] = v;
+    unsigned int v = d_csr_row_ptr[tidx];
+    unsigned int start = tidx*maxn_columns;
+    unsigned int n = d_n_columns[tidx];
+
+    // this is how we do the segmented scan
+    for (unsigned int i = 0; i < n; ++i)
+        d_colidx[v+i] = d_colidx_table[start+i];
     }
 
 __global__ void reset_mem(
@@ -471,7 +477,6 @@ void identify_connected_components(
     const unsigned int *d_n_literals,
     unsigned int *d_n_columns,
     unsigned int *d_colidx_table,
-    unsigned int *d_compact_indices,
     unsigned int *d_colidx,
     unsigned int *d_csr_row_ptr,
     const unsigned int n_variables,
@@ -483,11 +488,8 @@ void identify_connected_components(
     {
     hipMemsetAsync(d_n_columns, 0, sizeof(unsigned int)*(n_variables+1));
 
-    // prepare the matrix with sentinel values
-    unsigned int max_n_columns = maxn_literals;
-    hipMemsetAsync(d_colidx_table, 0xff, sizeof(unsigned int)*max_n_columns*n_variables);
-
     // fill the connnectivity matrix
+    unsigned int max_n_columns = 2*maxn_literals;
     hipLaunchKernelGGL(kernel::find_dependencies, n_variables/block_size + 1, block_size, 0, 0,
         n_variables,
         d_n_literals,
@@ -515,35 +517,13 @@ void identify_connected_components(
         n_variables+1);
     alloc.deallocate((char *)d_temp_storage);
 
-    // stream compact the column indices
-
-    // (we're doing it the lazy way, scanning over the entire table instead of constructing a map into the 2d
-    // array and gathering, which might be more efficient)
-
-    unsigned int n = n_variables*max_n_columns;
-    auto is_value = cub::TransformInputIterator<unsigned int, kernel::IsValue, const unsigned int *>(d_colidx_table, kernel::IsValue());
-
-    d_temp_storage = nullptr;
-    temp_storage_bytes = 0;
-    cub::DeviceScan::ExclusiveSum(
-        d_temp_storage,
-        temp_storage_bytes,
-        is_value,
-        d_compact_indices,
-        n);
-    d_temp_storage = alloc.allocate(temp_storage_bytes);
-    cub::DeviceScan::ExclusiveSum(
-        d_temp_storage,
-        temp_storage_bytes,
-        is_value,
-        d_compact_indices,
-        n);
-    alloc.deallocate((char *)d_temp_storage);
-
-    hipLaunchKernelGGL(kernel::scatter_column_indices, n/block_size + 1, block_size, 0, 0,
-        n,
+    // move the 2d table into a contiguous array
+    hipLaunchKernelGGL(kernel::scatter_rows, n_variables/block_size + 1, block_size, 0, 0,
+        n_variables,
+        max_n_columns,
+        d_n_columns,
+        d_csr_row_ptr,
         d_colidx_table,
-        d_compact_indices,
         d_colidx);
 
     // find connected components
