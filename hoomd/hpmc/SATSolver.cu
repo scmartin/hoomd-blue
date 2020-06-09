@@ -419,6 +419,38 @@ __global__ void find_dependencies(
         }
     }
 
+__global__ void reset_mem(
+    const unsigned int n_variables,
+    unsigned int *d_head,
+    unsigned int *d_next,
+    unsigned int *d_watch,
+    unsigned int *d_next_clause,
+    const unsigned int *d_n_literals,
+    const unsigned int maxn_literals,
+    unsigned int *d_unsat,
+    unsigned int *d_heap)
+    {
+    unsigned int tidx = threadIdx.x+blockDim.x*blockIdx.x;
+
+    if (tidx >= n_variables)
+        return;
+
+    if (tidx == 0)
+        {
+        *d_unsat = 0;
+        *d_heap = 0;
+        }
+
+    d_head[tidx] = SAT_sentinel;
+    d_next[tidx] = SAT_sentinel;
+    d_watch[tidx << 1] = d_watch[(tidx << 1) | 1] = SAT_sentinel;
+
+    unsigned int n = d_n_literals[tidx];
+    for (unsigned int literal = 0; literal < n; ++literal)
+        d_next_clause[tidx*maxn_literals+literal] = SAT_sentinel;
+    }
+
+
 } //end namespace kernel
 
 void identify_connected_components(
@@ -520,15 +552,19 @@ void solve_sat(
     unsigned int *d_heap,
     const unsigned int block_size)
     {
-    hipMemsetAsync(d_unsat, 0, sizeof(unsigned int));
-    hipMemsetAsync(d_heap, 0, sizeof(unsigned int));
+    // initialize memory
+    hipLaunchKernelGGL(kernel::reset_mem, n_variables/block_size + 1, block_size, 0, 0,
+        n_variables,
+        d_head,
+        d_next,
+        d_watch,
+        d_next_clause,
+        d_n_literals,
+        maxn_literals,
+        d_unsat,
+        d_heap);
 
-    // initialize with sentinel values
-    hipMemsetAsync(d_head, 0xff, sizeof(unsigned int)*n_variables);
-    hipMemsetAsync(d_next, 0xff, sizeof(unsigned int)*n_variables);
-    hipMemsetAsync(d_watch, 0xff, sizeof(unsigned int)*2*n_variables);
-    hipMemsetAsync(d_next_clause, 0xff, sizeof(unsigned int)*n_variables*maxn_literals);
-
+    // watch all first literals in each clause
     hipLaunchKernelGGL(kernel::setup_watch_list, n_variables/block_size + 1, block_size, 0, 0,
         n_variables,
         maxn_literals,
@@ -537,6 +573,7 @@ void solve_sat(
         d_watch,
         d_next_clause);
 
+    // setup active rings for the solver
     unsigned int sat_block_size = 256;
     hipLaunchKernelGGL(kernel::initialize_components, n_variables/sat_block_size + 1, sat_block_size, 0, 0,
         d_watch,
@@ -547,6 +584,7 @@ void solve_sat(
         d_head,
         d_next);
 
+    // solve the system of Boolean equations
     hipLaunchKernelGGL(kernel::solve_sat, n_variables/sat_block_size + 1, sat_block_size, 0, 0,
         d_watch,
         d_next_clause,
