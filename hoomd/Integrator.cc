@@ -44,10 +44,10 @@ Integrator::~Integrator()
 
 /*! \param fc ForceCompute to add
 */
-//void Integrator::addManifold(std::shared_ptr<Manifold> mf)
-//    {
-//    m_manifold = mf;
-//    }
+void Integrator::addManifold(std::shared_ptr<Manifold> mf)
+    {
+    m_manifold = mf;
+    }
 
 /*! \param fc ForceCompute to add
 */
@@ -119,7 +119,9 @@ Scalar Integrator::getDeltaT()
 unsigned int Integrator::getNDOFRemoved()
     {
     // start counting at 0
-    unsigned int n = 0;//m_manifold->getNDOFRemoved();
+    unsigned int n = 0;
+
+    if(m_manifold != NULL) n = m_manifold->getNDOFRemoved();
 
     // loop through all constraint forces
     std::vector< std::shared_ptr<ForceConstraint> >::iterator force_compute;
@@ -947,7 +949,7 @@ void export_Integrator(py::module& m)
     {
     py::class_<Integrator, std::shared_ptr<Integrator> >(m,"Integrator",py::base<Updater>())
     .def(py::init< std::shared_ptr<SystemDefinition>, Scalar >())
-    //.def("addManifold", &Integrator::addManifold)
+    .def("addManifold", &Integrator::addManifold)
     .def("addForceCompute", &Integrator::addForceCompute)
     .def("addForceConstraint", &Integrator::addForceConstraint)
     .def("setHalfStepHook", &Integrator::setHalfStepHook)

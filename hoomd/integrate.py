@@ -104,9 +104,9 @@ class _integrator(hoomd.meta._metadata):
         self.check_initialization();
 
         # set the forces
-        #mf=hoomd.context.current.manifold
-        #if mf is not None:
-        #    self.cpp_integrator.addManifold(mf.cpp_manifold);
+        mf=hoomd.context.current.manifold
+        if mf is not None:
+            self.cpp_integrator.addManifold(mf.cpp_manifold);
 
 
         self.cpp_integrator.removeForceComputes();

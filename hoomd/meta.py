@@ -99,6 +99,7 @@ def dump_metadata(filename=None,user=None,indent=4):
 
     global_objs = [hoomd.data.system_data(hoomd.context.current.system_definition)];
     global_objs += [hoomd.context.current.integrator];
+    global_objs += [hoomd.context.current.manifold];
 
     for o in global_objs:
         if o is not None:
@@ -109,7 +110,6 @@ def dump_metadata(filename=None,user=None,indent=4):
 
     global_objs = copy.copy(hoomd.context.current.forces);
     global_objs += hoomd.context.current.constraint_forces;
-    #global_objs += hoomd.context.current.manifold;
     global_objs += hoomd.context.current.integration_methods;
     global_objs += hoomd.context.current.forces
     global_objs += hoomd.context.current.analyzers;

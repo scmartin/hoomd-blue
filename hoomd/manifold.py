@@ -40,7 +40,7 @@ class _manifold():
 
         self.cpp_manifold = None;
 
-        #hoomd.context.current.manifold = self;
+        hoomd.context.current.manifold = self;
 
     ## \var cpp_manifold
     # \internal
