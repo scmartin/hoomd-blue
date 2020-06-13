@@ -5,7 +5,7 @@
 // Maintainer: joaander
 
 #include "IntegrationMethodTwoStep.h"
-#include "Manifold.h"
+#include "hoomd/Manifold.h"
 
 #ifndef __TWO_STEP_RATTLE_NVE_H__
 #define __TWO_STEP_RATTLE_NVE_H__

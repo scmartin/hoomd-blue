@@ -4,7 +4,7 @@
 
 // Maintainer: pschoenhoefer
 
-#include "Manifold.h"
+#include "hoomd/Manifold.h"
 
 /*! \file TPMSManifold.h
     \brief Declares the implicit function of a sphere.
@@ -49,6 +49,8 @@ class PYBIND11_EXPORT TPMSManifold : public Manifold
         Scalar3 derivative(Scalar3 point);
 
         Scalar3 returnL();
+
+        unsigned int getNDOFRemoved();
 
         bool returnSurf(int j);
     protected:

@@ -7,7 +7,7 @@
 
 
 #include "Manifold.h"
-#include "hoomd/VectorMath.h"
+#include "VectorMath.h"
 
 namespace py = pybind11;
 
@@ -46,5 +46,6 @@ void export_Manifold(pybind11::module& m)
     .def("implicit_function", &Manifold::implicit_function)
     .def("derivative", &Manifold::derivative)
     .def("returnLx", &Manifold::returnL)
+    .def("getNDOFRemoved", &Manifold::getNDOFRemoved)
     ;
     }

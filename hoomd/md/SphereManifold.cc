@@ -60,6 +60,13 @@ Scalar3 SphereManifold::returnL()
 	return L;
     }
 
+/*! ConstraintSphere removes 1 degree of freedom per particle in the group
+*/
+unsigned int SphereManifold::getNDOFRemoved()
+    {
+    return m_pdata->getN();
+    }
+
 void SphereManifold::validate()
     {
     BoxDim box = m_pdata->getGlobalBox();
@@ -83,6 +90,7 @@ void export_SphereManifold(pybind11::module& m)
     .def("implicit_function", &SphereManifold::implicit_function)
     .def("derivative", &SphereManifold::derivative)
     .def("returnL", &SphereManifold::returnL)
+    .def("getNDOFRemoved", &SphereManifold::getNDOFRemoved)
     .def("returnSurf", &SphereManifold::returnSurf)
     ;
     }

@@ -18,7 +18,6 @@ set(_md_sources module-md.cc
                    HarmonicImproperForceCompute.cc
                    IntegrationMethodTwoStep.cc
                    IntegratorTwoStep.cc
-                   Manifold.cc
                    MolecularForceCompute.cc
                    NeighborListBinned.cc
                    NeighborList.cc
@@ -116,7 +115,6 @@ set(_md_headers ActiveForceComputeGPU.h
                 HarmonicImproperForceCompute.h
                 IntegrationMethodTwoStep.h
                 IntegratorTwoStep.h
-                Manifold.h
                 MolecularForceCompute.cuh
                 MolecularForceCompute.h
                 NeighborListBinned.h
@@ -341,6 +339,7 @@ set(files __init__.py
           force.py
           improper.py
           integrate.py
+          manifold.py
           nlist.py
           pair.py
           update.py

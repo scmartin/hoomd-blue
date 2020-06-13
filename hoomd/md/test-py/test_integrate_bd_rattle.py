@@ -37,7 +37,7 @@ class integrate_brownian_rattle_tests (unittest.TestCase):
     def test_basic_run(self):
         all = group.all();
         md.integrate.mode_standard(dt=0.005);
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         bd = md.integrate.brownian_rattle(all, manifold=sphere, kT=1.2, seed=52);
         run(5);
         bd.disable();
@@ -65,14 +65,14 @@ class integrate_brownian_rattle_tests (unittest.TestCase):
     # test set_params
     def test_set_params(self):
         all = group.all();
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         bd = md.integrate.brownian_rattle(all, manifold=sphere, kT=1.2, seed=1);
         bd.set_params(kT=1.3);
 
     # test set_gamma
     def test_set_gamma(self):
         all = group.all();
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         bd = md.integrate.brownian_rattle(all, manifold=sphere, kT=1.2, seed=1);
         bd.set_gamma('A', 0.5);
         bd.set_gamma('B', 1.0);
@@ -80,7 +80,7 @@ class integrate_brownian_rattle_tests (unittest.TestCase):
     # test set_gamma
     def test_set_gamma_r(self):
         all = group.all();
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         bd = md.integrate.brownian_rattle(all, manifold=sphere, kT=1.2, seed=1);
         bd.set_gamma_r('A', 0.5);
         bd.set_gamma_r('B', (1.0,2.0,3.0));
@@ -108,7 +108,7 @@ class integrate_brownian_rattle_gyroid (unittest.TestCase):
     def test_basic_run(self):
         all = group.all();
         md.integrate.mode_standard(dt=0.001);
-        gyroid = md.constrain.tpms_manifold(surface='Gyroid',N=1)
+        gyroid = md.manifold.tpms(surface='Gyroid',N=1)
         bd = md.integrate.brownian_rattle(all, manifold=gyroid, kT=1.2, seed=52);
         run(5000);
         
@@ -142,7 +142,7 @@ class integrate_brownian_rattle_diffusion (unittest.TestCase):
         gamma=1;
         dt=0.001;
         steps=5000;
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
 
         md.integrate.mode_standard(dt=dt);
         bd = md.integrate.brownian_rattle(group.all(), manifold=sphere, kT=kT, seed=1, dscale=False, noiseless_t=True);
@@ -167,7 +167,7 @@ class integrate_brownian_rattle_diffusion (unittest.TestCase):
         gamma=100;
         dt=0.01;
         steps=5000;
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
 
         md.integrate.mode_standard(dt=dt);
         bd = md.integrate.brownian_rattle(group.all(), manifold=sphere, kT=kT, seed=1, dscale=False);
@@ -192,7 +192,7 @@ class integrate_brownian_rattle_diffusion (unittest.TestCase):
         gamma=100;
         dt=0.01;
         steps=5000;
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
 
         md.integrate.mode_standard(dt=dt);
         bd = md.integrate.brownian_rattle(group.all(), manifold=sphere, kT=kT, seed=1, dscale=gamma);

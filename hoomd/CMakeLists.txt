@@ -42,6 +42,7 @@ set(_hoomd_sources Analyzer.cc
                    LogPlainTXT.cc
                    LogMatrix.cc
                    LogHDF5.cc
+                   Manifold.cc
                    Messenger.cc
                    MemoryTraceback.cc
                    MPIConfiguration.cc
@@ -126,6 +127,7 @@ set(_hoomd_headers
     LogHDF5.h
     managed_allocator.h
     ManagedArray.h
+    Manifold.h
     MemoryTraceback.h
     Messenger.h
     MPIConfiguration.h
@@ -261,6 +263,7 @@ set(files analyze.py
           __init__.py
           init.py
           integrate.py
+          manifold.py
           meta.py
           option.py
           update.py

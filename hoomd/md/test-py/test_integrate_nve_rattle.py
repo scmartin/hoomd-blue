@@ -33,7 +33,7 @@ class integrate_nve_rattle_tests (unittest.TestCase):
     def test_basic_run(self):
         all = group.all();
         md.integrate.mode_standard(dt=0.0005);
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         md.integrate.nve_rattle(group=all,manifold=sphere);
         run(100);
 
@@ -52,7 +52,7 @@ class integrate_nve_rattle_tests (unittest.TestCase):
     def test_options(self):
         all = group.all();
         md.integrate.mode_standard(dt=0.005);
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         md.integrate.nve_rattle(group=all, manifold=sphere, limit=0.01, zero_force=True);
         run(100);
 
@@ -61,7 +61,7 @@ class integrate_nve_rattle_tests (unittest.TestCase):
         all = group.all();
         mode = md.integrate.mode_standard(dt=0.005);
         mode.set_params(dt=0.001);
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         nve = md.integrate.nve_rattle(group=all,manifold=sphere);
         nve.set_params(limit=False);
         nve.set_params(limit=0.1);
@@ -71,14 +71,14 @@ class integrate_nve_rattle_tests (unittest.TestCase):
     def test_empty(self):
         empty = group.cuboid(name="empty", xmin=-100, xmax=-100, ymin=-100, ymax=-100, zmin=-100, zmax=-100)
         mode = md.integrate.mode_standard(dt=0.005);
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         nve = md.integrate.nve_rattle(group=empty,manifold=sphere)
         run(1);
 
     # test method can be enabled and disabled
     def test_disable_enable(self):
         mode = md.integrate.mode_standard(dt=0.005);
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         nve = md.integrate.nve_rattle(group=group.all(),manifold=sphere)
         self.assertTrue(nve in context.current.integration_methods)
 

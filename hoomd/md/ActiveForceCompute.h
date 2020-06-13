@@ -9,8 +9,7 @@
 #include <memory>
 #include "hoomd/HOOMDMath.h"
 #include "hoomd/VectorMath.h"
-
-#include "Manifold.h"
+#include "hoomd/Manifold.h"
 
 /*! \file ActiveForceCompute.h
     \brief Declares a class for computing active forces and torques

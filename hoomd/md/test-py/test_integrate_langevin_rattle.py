@@ -37,7 +37,7 @@ class integrate_langevin_rattle_tests (unittest.TestCase):
     def test_basic_run(self):
         all = group.all();
         md.integrate.mode_standard(dt=0.005);
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         bd = md.integrate.langevin_rattle(all, manifold=sphere, kT=1.2, seed=52);
         run(5);
         bd.disable();
@@ -68,7 +68,7 @@ class integrate_langevin_rattle_tests (unittest.TestCase):
     # test set_params
     def test_set_params(self):
         all = group.all();
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         bd = md.integrate.langevin_rattle(all, manifold=sphere, kT=1.2, seed=1);
         bd.set_params(kT=1.3);
         bd.set_params(tally=False);
@@ -76,7 +76,7 @@ class integrate_langevin_rattle_tests (unittest.TestCase):
     # test set_gamma
     def test_set_gamma(self):
         all = group.all();
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         bd = md.integrate.langevin_rattle(all, manifold=sphere, kT=1.2, seed=1);
         bd.set_gamma('A', 0.5);
         bd.set_gamma('B', 1.0);
@@ -84,7 +84,7 @@ class integrate_langevin_rattle_tests (unittest.TestCase):
     # test set_gamma
     def test_set_gamma_r(self):
         all = group.all();
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         bd = md.integrate.langevin_rattle(all, manifold=sphere, kT=1.2, seed=1);
         bd.set_gamma_r('A', 0.5);
         bd.set_gamma_r('B', (1.0,2.0,3.0));
@@ -92,7 +92,7 @@ class integrate_langevin_rattle_tests (unittest.TestCase):
     # test w/ empty group
     def test_empty(self):
         empty = group.cuboid(name="empty", xmin=-100, xmax=-100, ymin=-100, ymax=-100, zmin=-100, zmax=-100)
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         mode = md.integrate.mode_standard(dt=0.005);
         nve = md.integrate.langevin_rattle(group=empty, manifold=sphere, kT=1.2, seed=1)
         run(1);
@@ -100,7 +100,7 @@ class integrate_langevin_rattle_tests (unittest.TestCase):
     # test adding types
     def test_add_type(self):
         all = group.all();
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
         bd = md.integrate.langevin_rattle(all, manifold=sphere, kT=1.2, seed=1);
         bd.set_gamma('A', 0.5);
         bd.set_gamma('B', 1.0);
@@ -133,7 +133,7 @@ class integrate_langevin_rattle_gyroid (unittest.TestCase):
     def test_basic_run(self):
         all = group.all();
         md.integrate.mode_standard(dt=0.001);
-        gyroid = md.constrain.tpms_manifold(surface='Gyroid',N=1)
+        gyroid = md.manifold.tpms(surface='Gyroid',N=1)
         bd = md.integrate.langevin_rattle(all, manifold=gyroid, kT=1.2, seed=52);
         run(5000);
         
@@ -167,7 +167,7 @@ class integrate_langevin_rattle_diffusion (unittest.TestCase):
         gamma=1;
         dt=0.001;
         steps=5000;
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
 
         md.integrate.mode_standard(dt=dt);
         bd = md.integrate.langevin_rattle(group.all(), manifold=sphere, kT=kT, seed=1, dscale=False, noiseless_t=True);
@@ -197,7 +197,7 @@ class integrate_langevin_rattle_diffusion (unittest.TestCase):
         gamma=10;
         dt=0.01;
         steps=5000;
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
 
         md.integrate.mode_standard(dt=dt);
         bd = md.integrate.langevin_rattle(group.all(), manifold=sphere, kT=kT, seed=1, dscale=False);
@@ -228,7 +228,7 @@ class integrate_langevin_rattle_diffusion (unittest.TestCase):
         gamma=5;
         dt=0.01;
         steps=5000;
-        sphere = md.constrain.sphere_manifold(P=(0,0,0),r=5)
+        sphere = md.manifold.sphere(P=(0,0,0),r=5)
 
         md.integrate.mode_standard(dt=dt);
         bd = md.integrate.langevin_rattle(group.all(), manifold=sphere, kT=kT, seed=1, dscale=gamma);

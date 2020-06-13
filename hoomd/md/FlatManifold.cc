@@ -77,6 +77,14 @@ Scalar3 FlatManifold::returnL()
 	return L;
     }
 
+/*! ConstraintSphere removes 1 degree of freedom per particle in the group
+*/
+unsigned int FlatManifold::getNDOFRemoved()
+    {
+    return m_pdata->getN();
+    }
+
+
 bool FlatManifold::returnSurf(int j)
     {
 	if(j==0) return xy;
@@ -92,6 +100,7 @@ void export_FlatManifold(pybind11::module& m)
     .def("implicit_function", &FlatManifold::implicit_function)
     .def("derivative", &FlatManifold::derivative)
     .def("returnL", &FlatManifold::returnL)
+    .def("getNDOFRemoved", &FlatManifold::getNDOFRemoved)
     .def("returnSurf", &FlatManifold::returnSurf)
     ;
     }

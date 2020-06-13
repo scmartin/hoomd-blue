@@ -27,7 +27,7 @@ class force_active_tests (unittest.TestCase):
         activity = [ tuple(((np.random.rand(3) - 0.5) * 2.0)) for i in range(100)] # random forces
         md.force.active(seed=2, f_lst=activity, group=group.all(), rotation_diff=1.0, orientation_link=False)
         md.force.active(seed=2, f_lst=activity, group=group.all(), rotation_diff=0.0, orientation_link=True)
-        sphere = md.constrain.sphere_manifold(r=5,P=(0,0,0))
+        sphere = md.manifold.sphere(r=5,P=(0,0,0))
         md.force.active(seed=2, f_lst=activity, group=group.all(), manifold=sphere)
 
     # test to change the manifold of md.force.active
@@ -35,7 +35,7 @@ class force_active_tests (unittest.TestCase):
         np.random.seed(2)
         activity = [ tuple(((np.random.rand(3) - 0.5) * 2.0)) for i in range(100)] # random forces
         active = md.force.active(seed=3, f_lst=activity, group=group.all())
-        sphere = md.constrain.sphere_manifold(r=5,P=(0,0,0))
+        sphere = md.manifold.sphere(r=5,P=(0,0,0))
         active.add_manifold(manifold=sphere)
         self.assertEqual(sphere, active.manifold)	
 

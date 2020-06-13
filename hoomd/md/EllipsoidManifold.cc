@@ -56,6 +56,14 @@ Scalar3 EllipsoidManifold::derivative(Scalar3 point)
        return delta;
        }
 
+/*! ConstraintSphere removes 1 degree of freedom per particle in the group
+*/
+unsigned int EllipsoidManifold::getNDOFRemoved()
+    {
+    return m_pdata->getN();
+    }
+
+
 void EllipsoidManifold::validate()
     {
     BoxDim box = m_pdata->getGlobalBox();
@@ -82,6 +90,7 @@ void export_EllipsoidManifold(pybind11::module& m)
     .def("implicit_function", &EllipsoidManifold::implicit_function)
     .def("derivative", &EllipsoidManifold::derivative)
     .def("returnL", &EllipsoidManifold::returnL)
+    .def("getNDOFRemoved", &EllipsoidManifold::getNDOFRemoved)
     .def("returnSurf", &EllipsoidManifold::returnSurf)
     ;
     }

@@ -5,7 +5,7 @@
 // Maintainer: pschoenhoefer
 
 #include "TwoStepLangevinBase.h"
-#include "Manifold.h"
+#include "hoomd/Manifold.h"
 
 #ifndef __TWO_STEP_RATTLE_LANGEVIN_H__
 #define __TWO_STEP_RATTLE_LANGEVIN_H__

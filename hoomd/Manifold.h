@@ -4,9 +4,9 @@
 
 // Maintainer: pschoenhoefer
 
-#include "hoomd/SystemDefinition.h"
-#include "hoomd/ParticleGroup.h"
-#include "hoomd/Profiler.h"
+#include "SystemDefinition.h"
+#include "ParticleGroup.h"
+#include "Profiler.h"
 
 /*! \file Manifold.h
     \brief Declares a class that defines a differentiable manifold.
@@ -45,6 +45,8 @@ class PYBIND11_EXPORT Manifold
 	virtual Scalar3 returnL() {return make_scalar3(0, 0, 0);}
 
 	virtual bool returnSurf(int i) {return false;}
+
+    virtual unsigned int getNDOFRemoved() {return 0;}
 
 #ifdef ENABLE_MPI
         //! Set the communicator to use

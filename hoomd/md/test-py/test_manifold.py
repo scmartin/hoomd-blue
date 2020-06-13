@@ -22,16 +22,16 @@ class constrain_distance_tests (unittest.TestCase):
         self.system.particles[2].position = (-0.82366867,-1.5844203,1.80553717)
     # test to see that se can create a md.force.constant
     def test_create(self):
-        md.constrain.sphere_manifold(P=(0,0,0),r=5);
-        md.constrain.ellipsoid_manifold(a=5,b=3,c=2,P=(0,0,0));
-        md.constrain.tpms_manifold(surface='G',N=1);
-        md.constrain.tpms_manifold(surface='diamond',N=2);
-        md.constrain.tpms_manifold(surface='Primitive',N=3);
+        md.manifold.sphere(P=(0,0,0),r=5);
+        md.manifold.ellipsoid(a=5,b=3,c=2,P=(0,0,0));
+        md.manifold.tpms(surface='G',N=1);
+        md.manifold.tpms(surface='diamond',N=2);
+        md.manifold.tpms(surface='Primitive',N=3);
 
     def test_implicit(self):
-        sphere1 = md.constrain.sphere_manifold(P=(0,0,0),r=5);
-        sphere2 = md.constrain.sphere_manifold(P=(0,0,0),r=6);
-        gyroid = md.constrain.tpms_manifold(surface='G',N=2);
+        sphere1 = md.manifold.sphere(P=(0,0,0),r=5);
+        sphere2 = md.manifold.sphere(P=(0,0,0),r=6);
+        gyroid = md.manifold.tpms(surface='G',N=2);
 
         pos0 = self.system.particles[0].position
         pos1 = self.system.particles[1].position
@@ -51,7 +51,7 @@ class constrain_distance_tests (unittest.TestCase):
 
 
     def test_derivative(self):
-        sphere1 = md.constrain.sphere_manifold(P=(0,0,0),r=5);
+        sphere1 = md.manifold.sphere(P=(0,0,0),r=5);
 
         pos1 = self.system.particles[1].position
        	pos2 = sphere1.derivative(pos1)

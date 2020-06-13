@@ -33,6 +33,7 @@
 #include "CallbackAnalyzer.h"
 #include "Updater.h"
 #include "Integrator.h"
+#include "Manifold.h"
 #include "SFCPackUpdater.h"
 #include "BoxResizeUpdater.h"
 #include "System.h"
@@ -353,6 +354,7 @@ PYBIND11_MODULE(_hoomd, m)
     export_ForceCompute(m);
     export_ForceConstraint(m);
     export_ConstForceCompute(m);
+    export_Manifold(m);
 
 #ifdef ENABLE_CUDA
     export_CellListGPU(m);

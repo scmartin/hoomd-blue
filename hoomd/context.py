@@ -115,6 +115,9 @@ class SimulationContext(object):
         ## Global variable that holds the sorter
         self.sorter = None;
 
+        ## Global variable that holds the manifold 
+        #self.manifold = None;
+
         ## Global variable that tracks the all of the force computes specified in the script so far
         self.forces = [];
 

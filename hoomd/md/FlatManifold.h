@@ -4,7 +4,7 @@
 
 // Maintainer: pschoenhoefer
 
-#include "Manifold.h"
+#include "hoomd/Manifold.h"
 
 /*! \file FlatManifold.h
     \brief Declares the implicit function of a sphere.
@@ -45,6 +45,9 @@ class PYBIND11_EXPORT FlatManifold : public Manifold
         Scalar3 derivative(Scalar3 point);
 
         Scalar3 returnL();
+
+        unsigned int getNDOFRemoved();
+
         bool returnSurf(int j);
     protected:
         std::string m_surf; //! determines which plane is considered

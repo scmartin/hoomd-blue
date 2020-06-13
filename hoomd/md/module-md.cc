@@ -29,7 +29,6 @@
 #include "HarmonicImproperForceCompute.h"
 #include "IntegrationMethodTwoStep.h"
 #include "IntegratorTwoStep.h"
-#include "Manifold.h"
 #include "MolecularForceCompute.h"
 #include "NeighborListBinned.h"
 #include "NeighborList.h"
@@ -298,7 +297,6 @@ PYBIND11_MODULE(_md, m)
     export_NeighborListTree(m);
     export_ConstraintSphere(m);
     export_OneDConstraint(m);
-    export_Manifold(m);
     export_EllipsoidManifold(m);
     export_FlatManifold(m);
     export_SphereManifold(m);

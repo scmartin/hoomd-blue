@@ -285,6 +285,8 @@ unsigned int IntegratorTwoStep::getNDOF(std::shared_ptr<ParticleGroup> group)
         res += (*method)->getNDOF(group);
         }
 
+    //std::cout << res << " " << m_sysdef->getNDimensions() << " " << getNDOFRemoved() << std::endl;
+    //exit(0);
     return res - m_sysdef->getNDimensions() - getNDOFRemoved();
     }
 
