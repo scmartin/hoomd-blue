@@ -153,6 +153,13 @@ void IntegratorTwoStep::update(unsigned int timestep)
     for (method = m_methods.begin(); method != m_methods.end(); ++method)
         (*method)->integrateStepTwo(timestep);
 
+
+    // update forces and virials if manifold constraint is present
+    if(m_manifold != NULL){
+        for (method = m_methods.begin(); method != m_methods.end(); ++method)
+            (*method)->IncludeRATTLEForce(timestep);
+    }
+
     /* NOTE: For composite particles, it is assumed that positions and orientations are not updated
        in the second step.
 
@@ -401,6 +408,12 @@ void IntegratorTwoStep::prepRun(unsigned int timestep)
 
     for (auto method = m_methods.begin(); method != m_methods.end(); ++method)
         (*method)->randomizeVelocities(timestep);
+
+    // update forces and virials if manifold constraint is present
+    if(m_manifold != NULL){
+        for (method = m_methods.begin(); method != m_methods.end(); ++method)
+            (*method)->IncludeRATTLEForce(timestep);
+    }
 
     m_prepared = true;
     }

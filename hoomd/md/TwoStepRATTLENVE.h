@@ -57,6 +57,9 @@ class PYBIND11_EXPORT TwoStepRATTLENVE : public IntegrationMethodTwoStep
         //! Performs the second step of the integration
         virtual void integrateStepTwo(unsigned int timestep);
 
+        //! Includes the RATTLE forces to the virial/net force
+        virtual void IncludeRATTLEForce(unsigned int timestep);
+
     protected:
         std::shared_ptr<Manifold> m_manifold;  //!< The manifold used for the RATTLE constraint
         bool m_limit;       //!< True if we should limit the distance a particle moves in one step

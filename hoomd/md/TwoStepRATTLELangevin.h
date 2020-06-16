@@ -65,6 +65,9 @@ class PYBIND11_EXPORT TwoStepRATTLELangevin : public TwoStepLangevinBase
         //! Performs the second step of the integration
         virtual void integrateStepTwo(unsigned int timestep);
 
+        //! Includes the RATTLE forces to the virial/net force
+        virtual void IncludeRATTLEForce(unsigned int timestep);
+
     protected:
         std::shared_ptr<Manifold> m_manifold;  //!< The manifold used for the RATTLE constraint
         Scalar m_reservoir_energy;         //!< The energy of the reservoir the system is coupled to.
