@@ -44,6 +44,7 @@ inline __device__ Scalar maxNorm(Scalar3 vec, Scalar resid)
     in sparse groups will not be coalesced. However, because ParticleGroup sorts the index list the writes will be as
     contiguous as possible leading to fewer memory transactions on compute 1.3 hardware and more cache hits on Fermi.
 */
+
 extern "C" __global__
 void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
                              Scalar4 *d_vel,
@@ -53,8 +54,6 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
                              const unsigned int nwork,
                              const unsigned int offset,
                              BoxDim box,
-			     EvaluatorConstraintManifold manifold,
-                             Scalar eta,
                              Scalar deltaT,
                              bool limit,
                              Scalar limit_val,
@@ -68,7 +67,6 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
 
         const unsigned int group_idx = work_idx + offset;
         unsigned int idx = d_group_members[group_idx];
-        unsigned int maxiteration = 10;
 
         // do velocity verlet update
         // r(t+deltaT) = r(t) + v(t)*deltaT + (1/2)a(t)*deltaT^2
@@ -78,8 +76,6 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
         Scalar4 postype = d_pos[idx];
         Scalar3 pos = make_scalar3(postype.x, postype.y, postype.z);
 
-    	Scalar3 normal = manifold.evalNormal(pos); // the normal vector to which the particles are confined.
-
         // read the particle's velocity and acceleration (MEM TRANSFER: 32 bytes)
         Scalar4 velmass = d_vel[idx];
         Scalar3 vel = make_scalar3(velmass.x, velmass.y, velmass.z);
@@ -88,36 +84,10 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
         if (!zero_force)
             accel = d_accel[idx];
 
-	Scalar lambda = 0.0;
-	Scalar inv_mass = Scalar(1.0)/velmass.w;
-	Scalar deltaT_half = Scalar(1.0/2.0)*deltaT;
-	Scalar inv_alpha = -deltaT_half*deltaT*inv_mass;
-	inv_alpha = Scalar(1.0)/inv_alpha;
+	    Scalar deltaT_half = Scalar(1.0/2.0)*deltaT;
 
-	Scalar3 next_pos = pos;
-	Scalar3 residual;
-	Scalar resid;
-	Scalar3 half_vel;
-
-
-	unsigned int iteration = 0;
-	do
-	{
-	    iteration++;
-            half_vel = vel + deltaT_half*accel-deltaT_half*inv_mass*lambda*normal;
-
-	    residual = pos - next_pos + deltaT*half_vel;
-	    resid = manifold.implicit_function(next_pos);
-
-            Scalar3 next_normal =  manifold.evalNormal(next_pos);
-	    Scalar nndotr = dot(next_normal,residual);
-	    Scalar nndotn = dot(next_normal,normal);
-	    Scalar beta = (resid + nndotr)/nndotn;
-
-            next_pos = next_pos - beta*normal + residual;   
-	    lambda = lambda - beta*inv_alpha;
-	 
-	} while (maxNorm(residual,resid) > eta && iteration < maxiteration );
+ 	    Scalar3 half_vel;
+        half_vel = vel + deltaT_half*accel;
 
         // update the position (FLOPS: 15)
         Scalar3 dx =  deltaT*half_vel;
@@ -171,8 +141,6 @@ cudaError_t gpu_rattle_nve_step_one(Scalar4 *d_pos,
                              unsigned int *d_group_members,
                              const GPUPartition& gpu_partition,
                              const BoxDim& box,
-			     EvaluatorConstraintManifold manifold,
-                             Scalar eta,
                              Scalar deltaT,
                              bool limit,
                              Scalar limit_val,
@@ -201,7 +169,7 @@ cudaError_t gpu_rattle_nve_step_one(Scalar4 *d_pos,
         dim3 threads(run_block_size, 1, 1);
 
         // run the kernel
-        gpu_rattle_nve_step_one_kernel<<< grid, threads >>>(d_pos, d_vel, d_accel, d_image, d_group_members, nwork, range.first, box, manifold, eta, deltaT, limit, limit_val, zero_force);
+        gpu_rattle_nve_step_one_kernel<<< grid, threads >>>(d_pos, d_vel, d_accel, d_image, d_group_members, nwork, range.first, box, deltaT, limit, limit_val, zero_force);
         }
 
     return cudaSuccess;
@@ -667,6 +635,157 @@ cudaError_t gpu_rattle_nve_angular_step_two(const Scalar4 *d_orientation,
 
         // run the kernel
         gpu_rattle_nve_angular_step_two_kernel<<< grid, threads >>>(d_orientation, d_angmom, d_inertia, d_net_torque, d_group_members, nwork, range.first, deltaT, scale);
+        }
+
+    return cudaSuccess;
+    }
+
+
+extern "C" __global__
+void gpu_include_rattle_force_kernel(const Scalar4 *d_pos,
+                             const Scalar4 *d_vel,
+                             Scalar3 *d_accel,
+                             Scalar4 *d_net_force,
+                             Scalar *d_net_virial,
+                             unsigned int *d_group_members,
+                             const unsigned int nwork,
+                             const unsigned int offset,
+                             unsigned int net_virial_pitch,
+			                 EvaluatorConstraintManifold manifold,
+                             Scalar eta,
+                             Scalar deltaT,
+                             bool zero_force)
+    {
+    // determine which particle this thread works on (MEM TRANSFER: 4 bytes)
+    int work_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (work_idx < nwork)
+        {
+
+        const unsigned int group_idx = work_idx + offset;
+        unsigned int idx = d_group_members[group_idx];
+        unsigned int maxiteration = 10;
+
+        // do velocity verlet update
+        // r(t+deltaT) = r(t) + v(t)*deltaT + (1/2)a(t)*deltaT^2
+        // v(t+deltaT/2) = v(t) + (1/2)a*deltaT
+
+        // read the particle's position (MEM TRANSFER: 16 bytes)
+        Scalar4 postype = d_pos[idx];
+        Scalar3 pos = make_scalar3(postype.x, postype.y, postype.z);
+
+    	Scalar3 normal = manifold.evalNormal(pos); // the normal vector to which the particles are confined.
+
+        // read the particle's velocity and acceleration (MEM TRANSFER: 32 bytes)
+        Scalar4 velmass = d_vel[idx];
+        Scalar3 vel = make_scalar3(velmass.x, velmass.y, velmass.z);
+
+        Scalar3 accel = make_scalar3(Scalar(0.0), Scalar(0.0), Scalar(0.0));
+        if (!zero_force)
+            accel = d_accel[idx];
+
+        // read the particle's velocity and acceleration (MEM TRANSFER: 32 bytes)
+        Scalar4 forcetype = d_net_force[idx];
+        Scalar3 force = make_scalar3(forcetype.x, forcetype.y, forcetype.z);
+
+        Scalar virial0 = d_net_virial[0*net_virial_pitch+idx];
+        Scalar virial1 = d_net_virial[1*net_virial_pitch+idx];
+        Scalar virial2 = d_net_virial[2*net_virial_pitch+idx];
+        Scalar virial3 = d_net_virial[3*net_virial_pitch+idx];
+        Scalar virial4 = d_net_virial[4*net_virial_pitch+idx];
+        Scalar virial5 = d_net_virial[5*net_virial_pitch+idx];
+
+	    Scalar lambda = 0.0;
+	    Scalar inv_mass = Scalar(1.0)/velmass.w;
+	    Scalar deltaT_half = Scalar(1.0/2.0)*deltaT;
+	    Scalar inv_alpha = -deltaT_half*deltaT*inv_mass;
+	    inv_alpha = Scalar(1.0)/inv_alpha;
+
+	    Scalar3 next_pos = pos;
+	    Scalar3 residual;
+	    Scalar resid;
+	    Scalar3 half_vel;
+
+
+	    unsigned int iteration = 0;
+	    do
+	        {
+	        iteration++;
+            half_vel = vel + deltaT_half*accel-deltaT_half*inv_mass*lambda*normal;
+
+	        residual = pos - next_pos + deltaT*half_vel;
+	        resid = manifold.implicit_function(next_pos);
+
+            Scalar3 next_normal =  manifold.evalNormal(next_pos);
+	        Scalar nndotr = dot(next_normal,residual);
+	        Scalar nndotn = dot(next_normal,normal);
+	        Scalar beta = (resid + nndotr)/nndotn;
+
+            next_pos = next_pos - beta*normal + residual;   
+	        lambda = lambda - beta*inv_alpha;
+	     
+	        } while (maxNorm(residual,resid) > eta && iteration < maxiteration );
+
+        accel -= lambda*normal;
+
+        force -= inv_mass*lambda*normal;
+
+        virial0 -= lambda*normal.x*pos.x;
+        virial1 -= 0.5*lambda*(normal.x*pos.y+normal.y*pos.x);
+        virial2 -= 0.5*lambda*(normal.x*pos.z+normal.z*pos.x);
+        virial3 -= lambda*normal.y*pos.y;
+        virial4 -= 0.5*lambda*(normal.y*pos.z+normal.z*pos.y);
+        virial5 -= lambda*normal.z*pos.z;
+
+
+        d_net_force[idx] = make_scalar4(force.x, force.y, force.z, forcetype.w);
+        d_accel[idx] = accel;
+        d_net_virial[0*net_virial_pitch+idx] = virial0;
+        d_net_virial[1*net_virial_pitch+idx] = virial1;
+        d_net_virial[2*net_virial_pitch+idx] = virial2;
+        d_net_virial[3*net_virial_pitch+idx] = virial3;
+        d_net_virial[4*net_virial_pitch+idx] = virial4;
+        d_net_virial[5*net_virial_pitch+idx] = virial5;
+        }
+    }
+
+cudaError_t gpu_include_rattle_force(const Scalar4 *d_pos,
+                             const Scalar4 *d_vel,
+                             Scalar3 *d_accel,
+                             Scalar4 *d_net_force,
+                             Scalar *d_net_virial,
+                             unsigned int *d_group_members,
+                             const GPUPartition& gpu_partition,
+                             unsigned int net_virial_pitch,
+			                 EvaluatorConstraintManifold manifold,
+                             Scalar eta,
+                             Scalar deltaT,
+                             bool zero_force,
+                             unsigned int block_size)
+    {
+    static unsigned int max_block_size = UINT_MAX;
+    if (max_block_size == UINT_MAX)
+        {
+        cudaFuncAttributes attr;
+        cudaFuncGetAttributes(&attr, (const void*)gpu_rattle_nve_step_one_kernel);
+        max_block_size = attr.maxThreadsPerBlock;
+        }
+
+    unsigned int run_block_size = min(block_size, max_block_size);
+
+    // iterate over active GPUs in reverse, to end up on first GPU when returning from this function
+    for (int idev = gpu_partition.getNumActiveGPUs() - 1; idev >= 0; --idev)
+        {
+        auto range = gpu_partition.getRangeAndSetGPU(idev);
+
+        unsigned int nwork = range.second - range.first;
+
+        // setup the grid to run the kernel
+        dim3 grid( (nwork/run_block_size) + 1, 1, 1);
+        dim3 threads(run_block_size, 1, 1);
+
+        // run the kernel
+        gpu_include_rattle_force<<< grid, threads >>>(d_pos, d_vel, d_accel, d_net_force, d_net_virial, d_group_members, nwork, range.first, net_virial_pitch, manifold, eta, deltaT, zero_force);
         }
 
     return cudaSuccess;

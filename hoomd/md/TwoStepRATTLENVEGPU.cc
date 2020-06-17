@@ -70,8 +70,6 @@ void TwoStepRATTLENVEGPU::integrateStepOne(unsigned int timestep)
                      d_index_array.data,
                      m_group->getGPUPartition(),
                      box,
-                     m_manifoldGPU,
-                     m_eta,
                      m_deltaT,
                      m_limit,
                      m_limit_val,
@@ -190,6 +188,48 @@ void TwoStepRATTLENVEGPU::integrateStepTwo(unsigned int timestep)
     // done profiling
     if (m_prof)
         m_prof->pop(m_exec_conf);
+    }
+
+void TwoStepRATTLENVEGPU::IncludeRATTLEForce(unsigned int timestep)
+    {
+
+    // access all the needed data
+    const GlobalArray< Scalar4 >& net_force = m_pdata->getNetForce();
+    const GlobalArray<Scalar>&  net_virial = m_pdata->getNetVirial();
+    ArrayHandle<Scalar4> d_pos(m_pdata->getPositions(), access_location::device, access_mode::read);
+    ArrayHandle<Scalar4> d_vel(m_pdata->getVelocities(), access_location::device, access_mode::read);
+    ArrayHandle<Scalar3> d_accel(m_pdata->getAccelerations(), access_location::device, access_mode::readwrite);
+
+    ArrayHandle<Scalar4> d_net_force(net_force, access_location::device, access_mode::readwrite);
+    ArrayHandle<Scalar> d_net_virial(net_virial, access_location::device, access_mode::readwrite);
+
+    ArrayHandle< unsigned int > d_index_array(m_group->getIndexArray(), access_location::device, access_mode::read);
+
+    unsigned int net_virial_pitch = net_virial.getPitch();
+
+    // perform the update on the GPU
+    m_exec_conf->beginMultiGPU();
+    m_tuner_one->begin();
+    gpu_include_rattle_force(d_pos.data,
+                     d_vel.data,
+                     d_accel.data,
+                     d_net_force.data,
+                     d_net_virial.data,
+                     d_index_array.data,
+                     m_group->getGPUPartition(),
+                     net_virial_pitch,
+                     m_manifoldGPU,
+                     m_eta,
+                     m_deltaT,
+                     m_zero_force,
+                     m_tuner_one->getParam());
+
+    if(m_exec_conf->isCUDAErrorCheckingEnabled())
+        CHECK_CUDA_ERROR();
+
+    m_tuner_one->end();
+    m_exec_conf->endMultiGPU();
+
     }
 
 void export_TwoStepRATTLENVEGPU(py::module& m)

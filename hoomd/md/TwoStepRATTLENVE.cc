@@ -452,23 +452,23 @@ void TwoStepRATTLENVE::IncludeRATTLEForce(unsigned int timestep)
 	    do
 	        {
 	        iteration++;
-                half_vel.x = h_vel.data[j].x + deltaT_half*(h_accel.data[j].x-inv_mass*lambda*normal.x);
-                half_vel.y = h_vel.data[j].y + deltaT_half*(h_accel.data[j].y-inv_mass*lambda*normal.y);
-                half_vel.z = h_vel.data[j].z + deltaT_half*(h_accel.data[j].z-inv_mass*lambda*normal.z);
+            half_vel.x = h_vel.data[j].x + deltaT_half*(h_accel.data[j].x-inv_mass*lambda*normal.x);
+            half_vel.y = h_vel.data[j].y + deltaT_half*(h_accel.data[j].y-inv_mass*lambda*normal.y);
+            half_vel.z = h_vel.data[j].z + deltaT_half*(h_accel.data[j].z-inv_mass*lambda*normal.z);
 
 	        residual.x = h_pos.data[j].x - next_pos.x + m_deltaT*half_vel.x;
 	        residual.y = h_pos.data[j].y - next_pos.y + m_deltaT*half_vel.y;
 	        residual.z = h_pos.data[j].z - next_pos.z + m_deltaT*half_vel.z;
 	        resid = m_manifold->implicit_function(next_pos);
 
-                Scalar3 next_normal =  m_manifold->derivative(next_pos);
+            Scalar3 next_normal =  m_manifold->derivative(next_pos);
 	        Scalar nndotr = dot(next_normal,residual);
 	        Scalar nndotn = dot(next_normal,normal);
 	        Scalar beta = (resid + nndotr)/nndotn;
 
-                next_pos.x = next_pos.x - beta*normal.x + residual.x;   
-                next_pos.y = next_pos.y - beta*normal.y + residual.y;   
-                next_pos.z = next_pos.z - beta*normal.z + residual.z;
+            next_pos.x = next_pos.x - beta*normal.x + residual.x;   
+            next_pos.y = next_pos.y - beta*normal.y + residual.y;   
+            next_pos.z = next_pos.z - beta*normal.z + residual.z;
 	        lambda = lambda - beta*inv_alpha;
 	     
 	        } while (maxNorm(residual,resid) > m_eta && iteration < maxiteration );

@@ -32,10 +32,10 @@ class integrate_nve_rattle_tests (unittest.TestCase):
     # tets basic creation of the dump
     def test_basic_run(self):
         all = group.all();
-        md.integrate.mode_standard(dt=0.0005);
+        md.integrate.mode_standard(dt=0.005);
         sphere = md.manifold.sphere(P=(0,0,0),r=5)
         md.integrate.nve_rattle(group=all,manifold=sphere);
-        run(100);
+        run(1000);
 
         snapshot = self.system.take_snapshot()
         
