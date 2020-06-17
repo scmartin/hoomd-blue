@@ -178,6 +178,9 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
             m_tuner_mem->setPeriod(period*this->m_nselect);
             m_tuner_mem->setEnabled(enable);
 
+            m_tuner_inequalities->setPeriod(period*this->m_nselect);
+            m_tuner_inequalities->setEnabled(enable);
+
             m_tuner_sat->setPeriod(period*this->m_nselect);
             m_tuner_sat->setEnabled(enable);
 
@@ -241,6 +244,7 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         std::unique_ptr<Autotuner> m_tuner_excell_block_size;  //!< Autotuner for excell block_size
         std::unique_ptr<Autotuner> m_tuner_dependencies;     //!< Autotuner for excell block_size
         std::unique_ptr<Autotuner> m_tuner_mem;              //!< Autotuner simply for resetting the memory for the solver
+        std::unique_ptr<Autotuner> m_tuner_inequalities;     //!< Autotuner for inequality preprocessing
         std::unique_ptr<Autotuner> m_tuner_sat;              //!< Autotuner for the SAT solver
         std::unique_ptr<Autotuner> m_tuner_depletants;       //!< Autotuner for inserting depletants
         std::unique_ptr<Autotuner> m_tuner_num_depletants;   //!< Autotuner for calculating number of depletants
@@ -259,7 +263,14 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         GlobalArray<unsigned int> m_literals;                 //!< Table of literals attached to variables
         GlobalVector<unsigned int> m_n_literals;              //!< Number of literals per variable
         unsigned int m_max_n_literals;                        //!< Max length of a literals (capacity)
-        GlobalArray<unsigned int> m_req_n_literals;           //!< Requested  number of literals
+        GlobalArray<unsigned int> m_req_n_literals;           //!< Requested number of literals
+
+        // inequalities
+        GlobalArray<unsigned int> m_inequality_literals;      //!< Table of literals in inequalities, attached to particles
+        GlobalVector<unsigned int> m_n_inequality;            //!< Number of inequality literals per varaible
+        GlobalVector<double> m_rhs;                           //!< Right hand side of every inequality
+        GlobalArray<double> m_coeff;                          //!< Linear coefficient of every literal in an inequality
+        unsigned int m_max_n_inequality;                      //!< Max number of literals per particles
 
         // temporary data structures for SAT solver
         GlobalVector<unsigned int> m_watch;
@@ -268,6 +279,12 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         GlobalVector<unsigned int> m_head;
         GlobalVector<unsigned int> m_next;
         GlobalVector<unsigned int> m_h;
+
+        GlobalVector<unsigned int> m_watch_inequality;
+        GlobalVector<unsigned int> m_next_inequality;
+        GlobalVector<unsigned int> m_is_watching;
+        GlobalVector<unsigned int> m_inequality_begin;
+        GlobalVector<double> m_watch_sum;
 
         GlobalVector<unsigned int> m_component_ptr;
         GlobalVector<unsigned int> m_representative;
@@ -363,6 +380,7 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
     m_tuner_dependencies.reset(new Autotuner(valid_params_cnf, 5, 100000, "hpmc_dependencies", this->m_exec_conf));
     m_tuner_mem.reset(new Autotuner(valid_params_cnf, 5, 100000, "hpmc_mem", this->m_exec_conf));
 
+    m_tuner_inequalities.reset(new Autotuner(dev_prop.warpSize, dev_prop.maxThreadsPerBlock, dev_prop.warpSize, 5, 1000000, "hpmc_inequalities", this->m_exec_conf));
     m_tuner_sat.reset(new Autotuner(dev_prop.warpSize, dev_prop.maxThreadsPerBlock, dev_prop.warpSize, 5, 1000000, "hpmc_sat", this->m_exec_conf));
 
     m_tuner_num_depletants.reset(new Autotuner(dev_prop.warpSize, dev_prop.maxThreadsPerBlock, dev_prop.warpSize, 5, 1000000, "hpmc_num_depletants", this->m_exec_conf));
@@ -441,6 +459,11 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
         }
     m_max_n_literals = 0;
 
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_n_inequality);
+    TAG_ALLOCATION(m_n_inequality);
+
+    m_max_n_inequality = 0;
+
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_component_ptr);
     TAG_ALLOCATION(m_component_ptr);
 
@@ -474,11 +497,26 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_watch);
     TAG_ALLOCATION(m_watch);
 
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_watch_inequality);
+    TAG_ALLOCATION(m_watch_inequality);
+
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_state);
     TAG_ALLOCATION(m_state);
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_next_clause);
     TAG_ALLOCATION(m_next_clause);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_next_inequality);
+    TAG_ALLOCATION(m_next_inequality);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_is_watching);
+    TAG_ALLOCATION(m_is_watching);
+
+    GlobalVector<unsigned int>(this->m_exec_conf).swap(m_inequality_begin);
+    TAG_ALLOCATION(m_inequality_begin);
+
+    GlobalVector<double>(this->m_exec_conf).swap(m_watch_sum);
+    TAG_ALLOCATION(m_watch_sum);
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_head);
     TAG_ALLOCATION(m_head);
@@ -845,6 +883,9 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             m_trial_move_type.resize(this->m_pdata->getMaxN());
             m_n_literals.resize(this->m_pdata->getMaxN());
 
+            m_n_inequality.resize(this->m_pdata->getMaxN());
+            m_rhs.resize(this->m_pdata->getMaxN());
+
             update_gpu_advice = true;
             }
 
@@ -1147,8 +1188,12 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
 
                     // CNF
                     ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::readwrite);
-                    ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::readwrite);
+                    ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_req_n_literals(this->m_req_n_literals, access_location::device, access_mode::readwrite);
+
+                    // inequalities
+                    ArrayHandle<unsigned int> d_n_inequality(this->m_n_inequality, access_location::device, access_mode::overwrite);
+
 
                     // depletant counters
                     ArrayHandle<hpmc_implicit_counters_t> d_implicit_count(this->m_implicit_count, access_location::device, access_mode::readwrite);
@@ -1160,6 +1205,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
 
                     // reset counters
                     hipMemsetAsync(d_n_literals.data, 0, sizeof(unsigned int)*m_n_literals.getNumElements());
+                    hipMemsetAsync(d_n_inequality.data, 0, sizeof(unsigned int)*m_n_inequality.getNumElements());
 
                     // fill the parameter structure for the GPU kernels
                     gpu::hpmc_args_t args(
@@ -1639,6 +1685,12 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::read);
             ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::read);
 
+            // inequalities
+            ArrayHandle<unsigned int> d_inequality_literals(this->m_inequality_literals, access_location::device, access_mode::readwrite);
+            ArrayHandle<unsigned int> d_n_inequality(this->m_n_inequality, access_location::device, access_mode::read);
+            ArrayHandle<double> d_rhs(this->m_rhs, access_location::device, access_mode::readwrite);
+            ArrayHandle<double> d_coeff(this->m_coeff, access_location::device, access_mode::readwrite);
+
             ArrayHandle<unsigned int> d_colidx(m_colidx, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_colidx_table(m_colidx_table, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_csr_row_ptr(m_csr_row_ptr, access_location::device, access_mode::overwrite);
@@ -1646,7 +1698,21 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             ArrayHandle<unsigned int> d_work(m_work, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_component_ptr(m_component_ptr, access_location::device, access_mode::overwrite);
 
-            // preprocessing
+            // preprocessing of inequalities
+            m_tuner_inequalities->begin();
+            gpu::preprocess_inequalities(
+                nvariables,
+                m_max_n_inequality,
+                d_inequality_literals.data,
+                d_n_inequality.data,
+                d_coeff.data,
+                d_rhs.data,
+                m_tuner_inequalities->getParam());
+            if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
+                CHECK_CUDA_ERROR();
+            m_tuner_inequalities->end();
+
+            // separate into connected components
             m_tuner_dependencies->begin();
             unsigned int param = m_tuner_dependencies->getParam();
             unsigned int block_size = param / 100;
@@ -1656,6 +1722,9 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 m_max_n_literals,
                 d_literals.data,
                 d_n_literals.data,
+                d_n_inequality.data,
+                d_inequality_literals.data,
+                m_max_n_inequality,
                 d_n_columns.data,
                 d_colidx_table.data,
                 d_colidx.data,
@@ -1680,9 +1749,17 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             m_state.resize(nvariables);
             m_representative.resize(nvariables);
 
-            // temporary variables for solver
+            m_watch_inequality.resize(nliterals);
+            m_next_inequality.resize(nvariables*m_max_n_inequality);
+            m_is_watching.resize(nvariables*m_max_n_inequality);
+            m_inequality_begin.resize(nvariables*m_max_n_inequality);
+            m_watch_sum.resize(nvariables*m_max_n_inequality);
+
+            // temporary variables used by solver
             ArrayHandle<unsigned int> d_watch(m_watch, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_next_clause(m_next_clause, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_watch_inequality(m_watch_inequality, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_next_inequality(m_next_inequality, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_head(m_head, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_next(m_next, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_h(m_h, access_location::device, access_mode::overwrite);
@@ -1690,6 +1767,9 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             ArrayHandle<unsigned int> d_reject(m_reject, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_heap(m_heap, access_location::device, access_mode::overwrite);
             ArrayHandle<unsigned int> d_representative(m_representative, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_is_watching(m_is_watching, access_location::device, access_mode::overwrite);
+            ArrayHandle<unsigned int> d_inequality_begin(m_inequality_begin, access_location::device, access_mode::overwrite);
+            ArrayHandle<double> d_watch_sum(m_watch_sum, access_location::device, access_mode::overwrite);
 
                 {
                 ArrayHandle<unsigned int> d_unsat(m_unsat, access_location::device, access_mode::overwrite);
@@ -1715,6 +1795,16 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     d_component_ptr.data,
                     d_representative.data,
                     d_heap.data,
+                    m_max_n_inequality,
+                    d_inequality_literals.data,
+                    d_n_inequality.data,
+                    d_coeff.data,
+                    d_rhs.data,
+                    d_inequality_begin.data,
+                    d_is_watching.data,
+                    d_watch_inequality.data,
+                    d_next_inequality.data,
+                    d_watch_sum.data,
                     block_size,
                     literals_per_block);
                 if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
@@ -1738,6 +1828,14 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     d_component_ptr.data,
                     d_representative.data,
                     d_heap.data,
+                    d_watch_inequality.data,
+                    d_next_inequality.data,
+                    d_inequality_literals.data,
+                    d_inequality_begin.data,
+                    d_is_watching.data,
+                    d_watch_sum.data,
+                    d_coeff.data,
+                    d_rhs.data,
                     m_tuner_sat->getParam());
                 if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
                     CHECK_CUDA_ERROR();
