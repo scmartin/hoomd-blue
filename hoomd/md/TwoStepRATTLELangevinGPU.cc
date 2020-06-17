@@ -29,14 +29,14 @@ using namespace std;
 */
 TwoStepRATTLELangevinGPU::TwoStepRATTLELangevinGPU(std::shared_ptr<SystemDefinition> sysdef,
                                        std::shared_ptr<ParticleGroup> group,
-                       		       std::shared_ptr<Manifold> manifold,
+                       		           std::shared_ptr<Manifold> manifold,
                                        std::shared_ptr<Variant> T,
                                        unsigned int seed,
                                        bool use_lambda,
                                        Scalar lambda,
                                        bool noiseless_t,
                                        bool noiseless_r,
-                           	       Scalar eta,
+                           	           Scalar eta,
                                        const std::string& suffix)
     : TwoStepRATTLELangevin(sysdef, group, manifold, T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta, suffix), m_manifoldGPU( manifold->returnL(), manifold->returnSurf(0), manifold->returnSurf(1) )
     {
@@ -80,7 +80,7 @@ void TwoStepRATTLELangevinGPU::integrateStepOne(unsigned int timestep)
 
     ArrayHandle<Scalar4> d_pos(m_pdata->getPositions(), access_location::device, access_mode::readwrite);
     ArrayHandle<Scalar4> d_vel(m_pdata->getVelocities(), access_location::device, access_mode::readwrite);
-    ArrayHandle<Scalar3> d_accel(m_pdata->getAccelerations(), access_location::device, access_mode::readwrite);
+    ArrayHandle<Scalar3> d_accel(m_pdata->getAccelerations(), access_location::device, access_mode::read);
     ArrayHandle<int3> d_image(m_pdata->getImages(), access_location::device, access_mode::readwrite);
 
     m_exec_conf->beginMultiGPU();
@@ -93,12 +93,9 @@ void TwoStepRATTLELangevinGPU::integrateStepOne(unsigned int timestep)
                      d_index_array.data,
                      m_group->getGPUPartition(),
                      box,
-                     m_manifoldGPU,
-                     m_eta,
                      m_deltaT,
                      false,
                      0,
-                     false,
                      m_tuner_one->getParam());
 
     if(m_exec_conf->isCUDAErrorCheckingEnabled())
@@ -251,6 +248,120 @@ void TwoStepRATTLELangevinGPU::integrateStepTwo(unsigned int timestep)
     // done profiling
     if (m_prof)
         m_prof->pop(m_exec_conf);
+    }
+
+void TwoStepRATTLELangevinGPU::IncludeRATTLEForce(unsigned int timestep)
+    {
+    ArrayHandle< unsigned int > d_index_array(m_group->getIndexArray(), access_location::device, access_mode::read);
+
+    const GlobalArray< Scalar4 >& net_force = m_pdata->getNetForce();
+    const GlobalArray<Scalar>&  net_virial = m_pdata->getNetVirial();
+    ArrayHandle<Scalar4> d_pos(m_pdata->getPositions(), access_location::device, access_mode::read);
+    ArrayHandle<Scalar4> d_vel(m_pdata->getVelocities(), access_location::device, access_mode::read);
+    ArrayHandle<Scalar3> d_accel(m_pdata->getAccelerations(), access_location::device, access_mode::readwrite);
+
+    ArrayHandle<Scalar4> d_net_force(net_force, access_location::device, access_mode::readwrite);
+    ArrayHandle<Scalar> d_net_virial(net_virial, access_location::device, access_mode::readwrite);
+
+    unsigned int net_virial_pitch = net_virial.getPitch();
+
+    m_exec_conf->beginMultiGPU();
+    m_tuner_one->begin();
+    // perform the update on the GPU
+    gpu_include_rattle_force(d_pos.data,
+                     d_vel.data,
+                     d_accel.data,
+                     d_net_force.data,
+                     d_net_virial.data,
+                     d_index_array.data,
+                     m_group->getGPUPartition(),
+                     net_virial_pitch,
+                     m_manifoldGPU,
+                     m_eta,
+                     m_deltaT,
+                     false,
+                     0,
+                     false,
+                     m_tuner_one->getParam());
+
+    if(m_exec_conf->isCUDAErrorCheckingEnabled())
+        CHECK_CUDA_ERROR();
+    m_tuner_one->end();
+    m_exec_conf->endMultiGPU();
+
+    if (m_aniso)
+        {
+        // first part of angular update
+        ArrayHandle<Scalar4> d_orientation(m_pdata->getOrientationArray(), access_location::device, access_mode::readwrite);
+        ArrayHandle<Scalar4> d_angmom(m_pdata->getAngularMomentumArray(), access_location::device, access_mode::readwrite);
+        ArrayHandle<Scalar4> d_net_torque(m_pdata->getNetTorqueArray(), access_location::device, access_mode::read);
+        ArrayHandle<Scalar3> d_inertia(m_pdata->getMomentsOfInertiaArray(), access_location::device, access_mode::read);
+
+        m_exec_conf->beginMultiGPU();
+        m_tuner_angular_one->begin();
+
+        gpu_rattle_nve_angular_step_one(d_orientation.data,
+                                 d_angmom.data,
+                                 d_inertia.data,
+                                 d_net_torque.data,
+                                 d_index_array.data,
+                                 m_group->getGPUPartition(),
+                                 m_deltaT,
+                                 1.0,
+                                 m_tuner_angular_one->getParam());
+
+        m_tuner_angular_one->end();
+        m_exec_conf->endMultiGPU();
+
+    if (m_exec_conf->isCUDAErrorCheckingEnabled())
+        CHECK_CUDA_ERROR();
+    }
+
+    // done profiling
+    if (m_prof)
+        m_prof->pop(m_exec_conf);
+    }
+
+void TwoStepRATTLELangevinGPU::IncludeRATTLEForce(unsigned int timestep)
+    {
+
+    // access all the needed data
+    const GlobalArray< Scalar4 >& net_force = m_pdata->getNetForce();
+    const GlobalArray<Scalar>&  net_virial = m_pdata->getNetVirial();
+    ArrayHandle<Scalar4> d_pos(m_pdata->getPositions(), access_location::device, access_mode::read);
+    ArrayHandle<Scalar4> d_vel(m_pdata->getVelocities(), access_location::device, access_mode::read);
+    ArrayHandle<Scalar3> d_accel(m_pdata->getAccelerations(), access_location::device, access_mode::readwrite);
+
+    ArrayHandle<Scalar4> d_net_force(net_force, access_location::device, access_mode::readwrite);
+    ArrayHandle<Scalar> d_net_virial(net_virial, access_location::device, access_mode::readwrite);
+
+    ArrayHandle< unsigned int > d_index_array(m_group->getIndexArray(), access_location::device, access_mode::read);
+
+    unsigned int net_virial_pitch = net_virial.getPitch();
+
+    // perform the update on the GPU
+    m_exec_conf->beginMultiGPU();
+    m_tuner_one->begin();
+    gpu_include_rattle_force(d_pos.data,
+                     d_vel.data,
+                     d_accel.data,
+                     d_net_force.data,
+                     d_net_virial.data,
+                     d_index_array.data,
+                     m_group->getGPUPartition(),
+                     net_virial_pitch,
+                     m_manifoldGPU,
+                     m_eta,
+                     m_deltaT,
+                     false,
+                     m_tuner_one->getParam());
+
+    if(m_exec_conf->isCUDAErrorCheckingEnabled())
+        CHECK_CUDA_ERROR();
+
+    m_tuner_one->end();
+    m_exec_conf->endMultiGPU();
+
     }
 
 void export_TwoStepRATTLELangevinGPU(py::module& m)

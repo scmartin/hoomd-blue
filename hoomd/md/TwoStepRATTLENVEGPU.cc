@@ -73,7 +73,6 @@ void TwoStepRATTLENVEGPU::integrateStepOne(unsigned int timestep)
                      m_deltaT,
                      m_limit,
                      m_limit_val,
-                     m_zero_force,
                      m_tuner_one->getParam());
 
     if(m_exec_conf->isCUDAErrorCheckingEnabled())

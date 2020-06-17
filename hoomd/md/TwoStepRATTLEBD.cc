@@ -375,6 +375,19 @@ void TwoStepRATTLEBD::IncludeRATTLEForce(unsigned int timestep)
         }
     }
 
+/*! \param query_group Group over which to count (translational) degrees of freedom.
+    A majority of the integration methods add D degrees of freedom per particle in \a query_group that is also in the
+    group assigned to the method. Hence, the base class IntegrationMethodTwoStep will implement that counting.
+    Derived classes can override if needed.
+*/
+unsigned int TwoStepRATTLEBD::getNDOF(std::shared_ptr<ParticleGroup> query_group)
+    {
+    // get the size of the intersection between query_group and m_group
+    unsigned int intersect_size = ParticleGroup::groupIntersection(query_group, m_group)->getNumMembersGlobal();
+
+    return ( m_sysdef->getNDimensions() - 1 ) * intersect_size;
+    }
+
 void export_TwoStepRATTLEBD(py::module& m)
     {
     py::class_<TwoStepRATTLEBD, std::shared_ptr<TwoStepRATTLEBD> >(m, "TwoStepRATTLEBD", py::base<TwoStepLangevinBase>())

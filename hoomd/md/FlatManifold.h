@@ -46,8 +46,6 @@ class PYBIND11_EXPORT FlatManifold : public Manifold
 
         Scalar3 returnL();
 
-        unsigned int getNDOFRemoved();
-
         bool returnSurf(int j);
     protected:
         std::string m_surf; //! determines which plane is considered

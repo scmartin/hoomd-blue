@@ -46,8 +46,6 @@ class PYBIND11_EXPORT Manifold
 
 	virtual bool returnSurf(int i) {return false;}
 
-    virtual unsigned int getNDOFRemoved() {return 0;}
-
 #ifdef ENABLE_MPI
         //! Set the communicator to use
         /*! \param comm MPI communication class

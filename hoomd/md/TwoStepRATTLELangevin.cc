@@ -107,7 +107,7 @@ void TwoStepRATTLELangevin::integrateStepOne(unsigned int timestep)
         m_prof->push("Langevin step 1");
 
     ArrayHandle<Scalar4> h_vel(m_pdata->getVelocities(), access_location::host, access_mode::readwrite);
-    ArrayHandle<Scalar3> h_accel(m_pdata->getAccelerations(), access_location::host, access_mode::readwrite);
+    ArrayHandle<Scalar3> h_accel(m_pdata->getAccelerations(), access_location::host, access_mode::read);
     ArrayHandle<Scalar4> h_pos(m_pdata->getPositions(), access_location::host, access_mode::readwrite);
     ArrayHandle<int3> h_image(m_pdata->getImages(), access_location::host, access_mode::readwrite);
 
@@ -591,6 +591,19 @@ void TwoStepRATTLELangevin::IncludeRATTLEForce(unsigned int timestep)
 	    h_accel.data[j].y -= inv_mass*lambda*normal.y;
 	    h_accel.data[j].z -= inv_mass*lambda*normal.z;
         }
+    }
+
+/*! \param query_group Group over which to count (translational) degrees of freedom.
+    A majority of the integration methods add D degrees of freedom per particle in \a query_group that is also in the
+    group assigned to the method. Hence, the base class IntegrationMethodTwoStep will implement that counting.
+    Derived classes can override if needed.
+*/
+unsigned int TwoStepRATTLELangevin::getNDOF(std::shared_ptr<ParticleGroup> query_group)
+    {
+    // get the size of the intersection between query_group and m_group
+    unsigned int intersect_size = ParticleGroup::groupIntersection(query_group, m_group)->getNumMembersGlobal();
+
+    return ( m_sysdef->getNDimensions() - 1 ) * intersect_size;
     }
 
 void export_TwoStepRATTLELangevin(py::module& m)

@@ -56,8 +56,7 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
                              BoxDim box,
                              Scalar deltaT,
                              bool limit,
-                             Scalar limit_val,
-                             bool zero_force)
+                             Scalar limit_val)
     {
     // determine which particle this thread works on (MEM TRANSFER: 4 bytes)
     int work_idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -80,9 +79,7 @@ void gpu_rattle_nve_step_one_kernel(Scalar4 *d_pos,
         Scalar4 velmass = d_vel[idx];
         Scalar3 vel = make_scalar3(velmass.x, velmass.y, velmass.z);
 
-        Scalar3 accel = make_scalar3(Scalar(0.0), Scalar(0.0), Scalar(0.0));
-        if (!zero_force)
-            accel = d_accel[idx];
+        Scalar3 accel = d_accel[idx];
 
 	    Scalar deltaT_half = Scalar(1.0/2.0)*deltaT;
 
@@ -144,7 +141,6 @@ cudaError_t gpu_rattle_nve_step_one(Scalar4 *d_pos,
                              Scalar deltaT,
                              bool limit,
                              Scalar limit_val,
-                             bool zero_force,
                              unsigned int block_size)
     {
     static unsigned int max_block_size = UINT_MAX;
@@ -169,7 +165,7 @@ cudaError_t gpu_rattle_nve_step_one(Scalar4 *d_pos,
         dim3 threads(run_block_size, 1, 1);
 
         // run the kernel
-        gpu_rattle_nve_step_one_kernel<<< grid, threads >>>(d_pos, d_vel, d_accel, d_image, d_group_members, nwork, range.first, box, deltaT, limit, limit_val, zero_force);
+        gpu_rattle_nve_step_one_kernel<<< grid, threads >>>(d_pos, d_vel, d_accel, d_image, d_group_members, nwork, range.first, box, deltaT, limit, limit_val);
         }
 
     return cudaSuccess;
@@ -767,7 +763,7 @@ cudaError_t gpu_include_rattle_force(const Scalar4 *d_pos,
     if (max_block_size == UINT_MAX)
         {
         cudaFuncAttributes attr;
-        cudaFuncGetAttributes(&attr, (const void*)gpu_rattle_nve_step_one_kernel);
+        cudaFuncGetAttributes(&attr, (const void*)gpu_include_rattle_force_kernel);
         max_block_size = attr.maxThreadsPerBlock;
         }
 
@@ -785,7 +781,7 @@ cudaError_t gpu_include_rattle_force(const Scalar4 *d_pos,
         dim3 threads(run_block_size, 1, 1);
 
         // run the kernel
-        gpu_include_rattle_force<<< grid, threads >>>(d_pos, d_vel, d_accel, d_net_force, d_net_virial, d_group_members, nwork, range.first, net_virial_pitch, manifold, eta, deltaT, zero_force);
+        gpu_include_rattle_force_kernel<<< grid, threads >>>(d_pos, d_vel, d_accel, d_net_force, d_net_virial, d_group_members, nwork, range.first, net_virial_pitch, manifold, eta, deltaT, zero_force);
         }
 
     return cudaSuccess;

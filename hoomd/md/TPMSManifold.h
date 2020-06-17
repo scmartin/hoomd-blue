@@ -50,8 +50,6 @@ class PYBIND11_EXPORT TPMSManifold : public Manifold
 
         Scalar3 returnL();
 
-        unsigned int getNDOFRemoved();
-
         bool returnSurf(int j);
     protected:
         std::string m_surf; //! determines the specific TPMS

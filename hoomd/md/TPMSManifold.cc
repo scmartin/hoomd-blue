@@ -87,13 +87,6 @@ Scalar3 TPMSManifold::returnL()
 	return L;
     }
 
-/*! ConstraintSphere removes 1 degree of freedom per particle in the group
-*/
-unsigned int TPMSManifold::getNDOFRemoved()
-    {
-    return m_pdata->getN();
-    }
-
 bool TPMSManifold::returnSurf(int j)
     {
 	if(j==0) return gyroid;
@@ -130,7 +123,6 @@ void export_TPMSManifold(pybind11::module& m)
     .def("implicit_function", &TPMSManifold::implicit_function)
     .def("derivative", &TPMSManifold::derivative)
     .def("returnL", &TPMSManifold::returnL)
-    .def("getNDOFRemoved", &TPMSManifold::getNDOFRemoved)
     .def("returnSurf", &TPMSManifold::returnSurf)
     ;
     }

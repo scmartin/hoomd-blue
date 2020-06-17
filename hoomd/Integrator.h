@@ -20,7 +20,6 @@
 #include "ForceConstraint.h"
 #include "HalfStepHook.h"
 #include "ParticleGroup.h"
-#include "Manifold.h"
 #include <string>
 #include <vector>
 #include <hoomd/extern/pybind/include/pybind11/pybind11.h>
@@ -75,9 +74,6 @@ class PYBIND11_EXPORT Integrator : public Updater
 
         //! Take one timestep forward
         virtual void update(unsigned int timestep);
-
-        //! Add a ForceConstraint to the list
-        virtual void addManifold(std::shared_ptr<Manifold> mf);
 
         //! Add a ForceCompute to the list
         virtual void addForceCompute(std::shared_ptr<ForceCompute> fc);
@@ -148,9 +144,6 @@ class PYBIND11_EXPORT Integrator : public Updater
         std::vector< std::shared_ptr<ForceCompute> > m_forces;    //!< List of all the force computes
 
         std::vector< std::shared_ptr<ForceConstraint> > m_constraint_forces;    //!< List of all the constraints
-
-        std::shared_ptr<Manifold> m_manifold;    //!< Manifold
-
 
         std::shared_ptr<HalfStepHook> m_half_step_hook;    //!< The HalfStepHook, if active
 

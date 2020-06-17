@@ -68,6 +68,9 @@ class PYBIND11_EXPORT TwoStepRATTLELangevin : public TwoStepLangevinBase
         //! Includes the RATTLE forces to the virial/net force
         virtual void IncludeRATTLEForce(unsigned int timestep);
 
+        //! Get the number of degrees of freedom granted to a given group
+        virtual unsigned int getNDOF(std::shared_ptr<ParticleGroup> group);
+
     protected:
         std::shared_ptr<Manifold> m_manifold;  //!< The manifold used for the RATTLE constraint
         Scalar m_reservoir_energy;         //!< The energy of the reservoir the system is coupled to.

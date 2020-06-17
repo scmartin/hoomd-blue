@@ -46,8 +46,6 @@ class PYBIND11_EXPORT SphereManifold : public Manifold
 
 	    Scalar3 returnL();
 
-        unsigned int getNDOFRemoved();
-
 	    bool returnSurf(int j){return false;};
     protected:
         Scalar m_r; //! The radius of the sphere.

@@ -155,10 +155,8 @@ void IntegratorTwoStep::update(unsigned int timestep)
 
 
     // update forces and virials if manifold constraint is present
-    if(m_manifold != NULL){
-        for (method = m_methods.begin(); method != m_methods.end(); ++method)
-            (*method)->IncludeRATTLEForce(timestep);
-    }
+    for (method = m_methods.begin(); method != m_methods.end(); ++method)
+        (*method)->IncludeRATTLEForce(timestep);
 
     /* NOTE: For composite particles, it is assumed that positions and orientations are not updated
        in the second step.
@@ -292,8 +290,6 @@ unsigned int IntegratorTwoStep::getNDOF(std::shared_ptr<ParticleGroup> group)
         res += (*method)->getNDOF(group);
         }
 
-    //std::cout << res << " " << m_sysdef->getNDimensions() << " " << getNDOFRemoved() << std::endl;
-    //exit(0);
     return res - m_sysdef->getNDimensions() - getNDOFRemoved();
     }
 
@@ -410,10 +406,8 @@ void IntegratorTwoStep::prepRun(unsigned int timestep)
         (*method)->randomizeVelocities(timestep);
 
     // update forces and virials if manifold constraint is present
-    if(m_manifold != NULL){
-        for (method = m_methods.begin(); method != m_methods.end(); ++method)
-            (*method)->IncludeRATTLEForce(timestep);
-    }
+    for (method = m_methods.begin(); method != m_methods.end(); ++method)
+        (*method)->IncludeRATTLEForce(timestep);
 
     m_prepared = true;
     }

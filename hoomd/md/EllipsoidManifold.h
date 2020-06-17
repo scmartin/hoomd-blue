@@ -50,8 +50,6 @@ class PYBIND11_EXPORT EllipsoidManifold : public Manifold
 
 	    Scalar3 returnL() {return make_scalar3(0,0,0);};
 
-        unsigned int getNDOFRemoved();
-
 	    bool returnSurf(int j) {return false;};
     protected:
         Scalar m_inva2; //! The inverse of x-axis length of the ellipsoid.
