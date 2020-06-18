@@ -65,8 +65,8 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
                                   int3 *d_image,
                                   const BoxDim box,
                                   const Scalar *d_diameter,
-                                  unsigned int *d_rtag,
-                                  unsigned int *d_groupTags,
+                                  const unsigned int *d_rtag,
+                                  const unsigned int *d_groupTags,
                                   const unsigned int nwork,
                                   const Scalar4 *d_net_force,
                                   const Scalar3 *d_f_brownian,
@@ -85,7 +85,6 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
                                   const bool aniso,
                                   const Scalar deltaT,
                                   unsigned int D,
-                                  const bool d_noiseless_t,
                                   const bool d_noiseless_r,
                                   const unsigned int offset)
     {
@@ -286,7 +285,6 @@ cudaError_t gpu_rattle_brownian_step_one(Scalar4 *d_pos,
                                   const bool aniso,
                                   const Scalar deltaT,
                                   const unsigned int D,
-                                  const bool d_noiseless_t,
                                   const bool d_noiseless_r,
                                   const GPUPartition& gpu_partition
                                   )
@@ -331,7 +329,6 @@ cudaError_t gpu_rattle_brownian_step_one(Scalar4 *d_pos,
                                      aniso,
                                      deltaT,
                                      D,
-                                     d_noiseless_t,
                                      d_noiseless_r,
                                      range.first);
         }
@@ -340,15 +337,14 @@ cudaError_t gpu_rattle_brownian_step_one(Scalar4 *d_pos,
     }
 
 extern "C" __global__
-void gpu_include_rattle_force_kernel(const Scalar4 *d_pos,
-                                  const Scalar4 *d_vel,
-                                  const Scalar *d_diameter,
-                                  unsigned int *d_rtag,
-                                  unsigned int *d_groupTags,
-                                  const unsigned int nwork,
+void gpu_include_rattle_force_bd_kernel(const Scalar4 *d_pos,
                                   Scalar4 *d_net_force,
-                                  Scalar4 *d_f_brownian,
-                                  Scalar4 *d_net_virial,
+                                  Scalar3 *d_f_brownian,
+                                  Scalar *d_net_virial,
+                                  const Scalar *d_diameter,
+                                  const unsigned int *d_rtag,
+                                  const unsigned int *d_groupTags,
+                                  const unsigned int nwork,
                                   const Scalar *d_gamma,
                                   const unsigned int n_types,
                                   const bool use_lambda,
@@ -357,9 +353,10 @@ void gpu_include_rattle_force_kernel(const Scalar4 *d_pos,
                                   const unsigned int seed,
                                   const Scalar T,
                                   const Scalar eta,
-				                  EvaluatorConstraintManifold manifold,
+				  EvaluatorConstraintManifold manifold,
                                   unsigned int net_virial_pitch,
                                   const Scalar deltaT,
+                                  const bool d_noiseless_t,
                                   const unsigned int offset)
     {
     extern __shared__ char s_data[];
@@ -378,15 +375,6 @@ void gpu_include_rattle_force_kernel(const Scalar4 *d_pos,
         __syncthreads();
         }
 
-    // read in the gamma_r, stored in s_gammas_r[0: n_type], which is s_gamma_r[0:n_type]
-
-    for (int cur_offset = 0; cur_offset < n_types; cur_offset += blockDim.x)
-        {
-        if (cur_offset + threadIdx.x < n_types)
-            s_gammas_r[cur_offset + threadIdx.x] = d_gamma_r[cur_offset + threadIdx.x];
-        }
-    __syncthreads();
-
     // determine which particle this thread works on (MEM TRANSFER: 4 bytes)
     int local_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -399,7 +387,6 @@ void gpu_include_rattle_force_kernel(const Scalar4 *d_pos,
         unsigned int idx = d_rtag[tag];
 
         Scalar4 postype = d_pos[idx];
-        Scalar4 vel = d_vel[idx];
         Scalar4 net_force = d_net_force[idx];
         Scalar3 brownian_force = d_f_brownian[tag];
 
@@ -427,7 +414,7 @@ void gpu_include_rattle_force_kernel(const Scalar4 *d_pos,
 
 
         // compute the random force
-        RandomGenerator rng(RNGIdentifier::TwoStepBD, seed, ptag, timestep);
+        RandomGenerator rng(RNGIdentifier::TwoStepBD, seed, tag, timestep);
 
         
 	    Scalar3 next_pos;
@@ -514,12 +501,12 @@ void gpu_include_rattle_force_kernel(const Scalar4 *d_pos,
             net_force.y -= mu*normal.y;
             net_force.z -= mu*normal.z;
 
-        virial0 -= mu*normal.x*pos.x;
-        virial1 -= 0.5*mu*(normal.x*pos.y+normal.y*pos.x);
-        virial2 -= 0.5*mu*(normal.x*pos.z+normal.z*pos.x);
-        virial3 -= mu*normal.y*pos.y;
-        virial4 -= 0.5*mu*(normal.y*pos.z+normal.z*pos.y);
-        virial5 -= mu*normal.z*pos.z;
+        virial0 -= mu*normal.x*postype.x;
+        virial1 -= 0.5*mu*(normal.x*postype.y+normal.y*postype.x);
+        virial2 -= 0.5*mu*(normal.x*postype.z+normal.z*postype.x);
+        virial3 -= mu*normal.y*postype.y;
+        virial4 -= 0.5*mu*(normal.y*postype.z+normal.z*postype.y);
+        virial5 -= mu*normal.z*postype.z;
 
         d_f_brownian[tag] = brownian_force;
 
@@ -534,8 +521,7 @@ void gpu_include_rattle_force_kernel(const Scalar4 *d_pos,
         }
     }
 
-cudaError_t gpu_include_rattle_force(const Scalar4 *d_pos,
-                                  const Scalar4 *d_vel,
+cudaError_t gpu_include_rattle_force_bd(const Scalar4 *d_pos,
                                   Scalar4 *d_net_force,
                                   Scalar3 *d_f_brownian,
                                   Scalar *d_net_virial,
@@ -543,11 +529,11 @@ cudaError_t gpu_include_rattle_force(const Scalar4 *d_pos,
                                   const unsigned int *d_rtag,
                                   const unsigned int *d_groupTags,
                                   const unsigned int group_size,
-                                  Scalar4 *d_angmom,
                                   const rattle_bd_step_one_args& rattle_bd_args,
-			                      EvaluatorConstraintManifold manifold,
+			          EvaluatorConstraintManifold manifold,
                                   unsigned int net_virial_pitch,
                                   const Scalar deltaT,
+                                  const bool d_noiseless_t,
                                   const GPUPartition& gpu_partition
                                   )
     {
@@ -565,11 +551,10 @@ cudaError_t gpu_include_rattle_force(const Scalar4 *d_pos,
         dim3 threads(run_block_size, 1, 1);
 
         // run the kernel
-        gpu_include_rattle_force_kernel<<< grid, threads, (unsigned int)(sizeof(Scalar)*rattle_bd_args.n_types + sizeof(Scalar3)*rattle_bd_args.n_types)>>>
+        gpu_include_rattle_force_bd_kernel<<< grid, threads, (unsigned int)(sizeof(Scalar)*rattle_bd_args.n_types + sizeof(Scalar3)*rattle_bd_args.n_types)>>>
                                     (d_pos,
-                                     d_vel,
                                      d_net_force,
-                                     d_net_brownian,
+                                     d_f_brownian,
                                      d_net_virial,
                                      d_diameter,
                                      d_rtag,
@@ -582,10 +567,11 @@ cudaError_t gpu_include_rattle_force(const Scalar4 *d_pos,
                                      rattle_bd_args.timestep,
                                      rattle_bd_args.seed,
                                      rattle_bd_args.T,
-			                         EvaluatorConstraintManifold manifold,
-                                     rattle_langevin_args.eta,
+                                     rattle_bd_args.eta,
+			             manifold,
                                      net_virial_pitch,
                                      deltaT,
+                                     d_noiseless_t,
                                      range.first);
         }
 

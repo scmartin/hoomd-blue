@@ -48,9 +48,13 @@ class PYBIND11_EXPORT TwoStepRATTLEBDGPU : public TwoStepRATTLEBD
         //! Performs the second step of the integration
         virtual void integrateStepTwo(unsigned int timestep);
 
+        //! Includes the RATTLE forces to the virial/net force
+        virtual void IncludeRATTLEForce(unsigned int timestep);
+
     protected:
         unsigned int m_block_size;               //!< block size
 	EvaluatorConstraintManifold m_manifoldGPU;
+        GPUArray<unsigned int>  m_groupTags; //! Stores list converting group index to global tag
     };
 
 //! Exports the TwoStepRATTLEBDGPU class to python

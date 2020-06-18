@@ -27,7 +27,6 @@ cudaError_t gpu_rattle_nve_step_one(Scalar4 *d_pos,
                              Scalar deltaT,
                              bool limit,
                              Scalar limit_val,
-                             bool zero_force,
                              unsigned int block_size);
 
 //! Kernel driver for the second part of the NVE update called by TwoStepNVEGPU
@@ -37,7 +36,7 @@ cudaError_t gpu_rattle_nve_step_two(Scalar4 *d_pos,
                              unsigned int *d_group_members,
                              const GPUPartition& gpu_partition,
                              Scalar4 *d_net_force,
-			                 EvaluatorConstraintManifold manifold,
+			     EvaluatorConstraintManifold manifold,
                              Scalar eta,
                              Scalar deltaT,
                              bool limit,
@@ -68,7 +67,7 @@ cudaError_t gpu_rattle_nve_angular_step_two(const Scalar4 *d_orientation,
                              const unsigned int block_size);
 
 //! Kernel driver for the first part of the NVE update called by TwoStepNVEGPU
-cudaError_t gpu_include_rattle_force(const Scalar4 *d_pos,
+cudaError_t gpu_include_rattle_force_nve(const Scalar4 *d_pos,
                              const Scalar4 *d_vel,
                              Scalar3 *d_accel,
                              Scalar4 *d_net_force,

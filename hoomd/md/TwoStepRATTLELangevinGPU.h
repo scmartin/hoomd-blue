@@ -49,6 +49,9 @@ class PYBIND11_EXPORT TwoStepRATTLELangevinGPU : public TwoStepRATTLELangevin
         //! Performs the second step of the integration
         virtual void integrateStepTwo(unsigned int timestep);
 
+        //! Includes the RATTLE forces to the virial/net force
+        virtual void IncludeRATTLEForce(unsigned int timestep);
+
         //! Set autotuner parameters
         /*! \param enable Enable/disable autotuning
             \param period period (approximate) in time steps when returning occurs

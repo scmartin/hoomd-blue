@@ -209,7 +209,7 @@ void TwoStepRATTLENVEGPU::IncludeRATTLEForce(unsigned int timestep)
     // perform the update on the GPU
     m_exec_conf->beginMultiGPU();
     m_tuner_one->begin();
-    gpu_include_rattle_force(d_pos.data,
+    gpu_include_rattle_force_nve(d_pos.data,
                      d_vel.data,
                      d_accel.data,
                      d_net_force.data,

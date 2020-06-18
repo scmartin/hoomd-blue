@@ -44,6 +44,10 @@ TwoStepRATTLEBDGPU::TwoStepRATTLEBDGPU(std::shared_ptr<SystemDefinition> sysdef,
         throw std::runtime_error("Error initializing TwoStepRATTLEBDGPU");
         }
 
+    unsigned int group_size = m_group->getNumMembersGlobal();
+    GPUArray<unsigned int> tmp_groupTags(group_size, m_exec_conf);
+    m_groupTags.swap(tmp_groupTags);
+
     m_block_size = 256;
     }
 
@@ -119,7 +123,6 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
                           d_diameter.data,
                           d_rtag.data,
                           d_groupTags.data,
-                          d_index_array.data,
                           group_size,
                           d_net_force.data,
                           d_f_brownian.data,
@@ -132,7 +135,6 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
                           aniso,
                           m_deltaT,
                           D,
-                          m_noiseless_t,
                           m_noiseless_r,
                           m_group->getGPUPartition());
 
@@ -167,8 +169,6 @@ void TwoStepRATTLEBDGPU::IncludeRATTLEForce(unsigned int timestep)
     const GlobalArray<Scalar>&  net_virial = m_pdata->getNetVirial();
 
     ArrayHandle<Scalar4> d_pos(m_pdata->getPositions(), access_location::device, access_mode::read);
-    ArrayHandle<Scalar4> d_vel(m_pdata->getVelocities(), access_location::device, access_mode::read);
-
     ArrayHandle<Scalar4> d_net_force(net_force, access_location::device, access_mode::readwrite);
     ArrayHandle<Scalar3> d_f_brownian(m_f_brownian, access_location::device, access_mode::readwrite);
     ArrayHandle<Scalar> d_net_virial(net_virial, access_location::device, access_mode::readwrite);
@@ -207,10 +207,9 @@ void TwoStepRATTLEBDGPU::IncludeRATTLEForce(unsigned int timestep)
     m_exec_conf->beginMultiGPU();
 
     // perform the update on the GPU
-    gpu_include_rattle_force(d_pos.data,
-                          d_vel.data,
+    gpu_include_rattle_force_bd(d_pos.data,
                           d_net_force.data,
-                          d_brownian_force.data,
+                          d_f_brownian.data,
                           d_net_virial.data,
                           d_diameter.data,
                           d_rtag.data,
@@ -220,6 +219,7 @@ void TwoStepRATTLEBDGPU::IncludeRATTLEForce(unsigned int timestep)
                           m_manifoldGPU,
                           net_virial_pitch,
                           m_deltaT,
+                          m_noiseless_t,
                           m_group->getGPUPartition());
 
     if(m_exec_conf->isCUDAErrorCheckingEnabled())
