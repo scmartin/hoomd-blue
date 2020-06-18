@@ -32,7 +32,7 @@ ActiveForceComputeGPU::ActiveForceComputeGPU(std::shared_ptr<SystemDefinition> s
                                         bool orientation_link,
                                         bool orientation_reverse_link,
                                         Scalar rotation_diff)
-        : ActiveForceCompute(sysdef, group, seed, f_lst, t_lst, orientation_link, orientation_reverse_link, rotation_diff), m_block_size(256) //,m_manifoldGPU( make_scalar3(0,0,0) , false, false )
+        : ActiveForceCompute(sysdef, group, seed, f_lst, t_lst, orientation_link, orientation_reverse_link, rotation_diff), m_block_size(256)
     {
     if (!m_exec_conf->isCUDAEnabled())
         {
@@ -120,7 +120,7 @@ void ActiveForceComputeGPU::setForces()
     bool orientationReverseLink = (m_orientationReverseLink == true);
     unsigned int group_size = m_group->getNumMembers();
     unsigned int N = m_pdata->getN();
-    EvaluatorConstraintManifold manifoldGPU (m_manifold->returnL(), m_manifold->returnSurf(0), m_manifold->returnSurf(1));
+    EvaluatorConstraintManifold manifoldGPU (m_manifold->returnL(), m_manifold->returnR(), m_manifold->returnSurf());
 
     gpu_compute_active_force_set_forces(group_size,
                                      d_rtag.data,
@@ -159,7 +159,7 @@ void ActiveForceComputeGPU::rotationalDiffusion(unsigned int timestep)
 
     bool is2D = (m_sysdef->getNDimensions() == 2);
     unsigned int group_size = m_group->getNumMembers();
-    EvaluatorConstraintManifold manifoldGPU (m_manifold->returnL(), m_manifold->returnSurf(0), m_manifold->returnSurf(1));
+    EvaluatorConstraintManifold manifoldGPU (m_manifold->returnL(), m_manifold->returnR(), m_manifold->returnSurf());
 
     gpu_compute_active_force_rotational_diffusion(group_size,
                                                 d_rtag.data,
@@ -194,7 +194,7 @@ void ActiveForceComputeGPU::setConstraint()
     assert(d_pos.data != NULL);
 
     unsigned int group_size = m_group->getNumMembers();
-    EvaluatorConstraintManifold manifoldGPU (m_manifold->returnL(), m_manifold->returnSurf(0), m_manifold->returnSurf(1));
+    EvaluatorConstraintManifold manifoldGPU (m_manifold->returnL(), m_manifold->returnR(), m_manifold->returnSurf());
 
     gpu_compute_active_force_set_constraints(group_size,
                                              d_rtag.data,

@@ -44,7 +44,9 @@ class PYBIND11_EXPORT Manifold
 
 	virtual Scalar3 returnL() {return make_scalar3(0, 0, 0);}
 
-	virtual bool returnSurf(int i) {return false;}
+	virtual Scalar3 returnR() {return make_scalar3(0, 0, 0);}
+
+	virtual unsigned int returnSurf() {return m_surf;}
 
 #ifdef ENABLE_MPI
         //! Set the communicator to use
@@ -61,6 +63,8 @@ class PYBIND11_EXPORT Manifold
         const std::shared_ptr<ParticleData> m_pdata;      //!< The particle data this method is associated with
         std::shared_ptr<Profiler> m_prof;                 //!< The profiler this method is to use
         std::shared_ptr<const ExecutionConfiguration> m_exec_conf; //!< Stored shared ptr to the execution configuration
+
+        unsigned int m_surf; //! determines the specific manifold
 
 #ifdef ENABLE_MPI
         std::shared_ptr<Communicator> m_comm;             //!< The communicator to use for MPI

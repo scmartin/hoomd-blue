@@ -371,7 +371,6 @@ void TwoStepRATTLEBD::IncludeRATTLEForce(unsigned int timestep)
 	    h_f_brownian.data[group_idx].x = Fr_x;
 	    h_f_brownian.data[group_idx].y = Fr_y;
 	    h_f_brownian.data[group_idx].z = Fr_z;
-
         }
     }
 

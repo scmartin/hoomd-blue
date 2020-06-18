@@ -22,7 +22,7 @@ using namespace std;
 TwoStepRATTLENVEGPU::TwoStepRATTLENVEGPU(std::shared_ptr<SystemDefinition> sysdef,
                        std::shared_ptr<ParticleGroup> group,
                        std::shared_ptr<Manifold> manifold)
-    : TwoStepRATTLENVE(sysdef, group, manifold), m_manifoldGPU( manifold->returnL(), manifold->returnSurf(0), manifold->returnSurf(1) )
+    : TwoStepRATTLENVE(sysdef, group, manifold), m_manifoldGPU( manifold->returnL(), manifold->returnR(), manifold->returnSurf() )
     {
     // only one GPU is supported
     if (!m_exec_conf->isCUDAEnabled())

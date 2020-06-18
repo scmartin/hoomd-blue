@@ -36,7 +36,7 @@ TwoStepRATTLEBDGPU::TwoStepRATTLEBDGPU(std::shared_ptr<SystemDefinition> sysdef,
                            bool noiseless_t,
                            bool noiseless_r,
                            Scalar eta)
-    : TwoStepRATTLEBD(sysdef, group, manifold,T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta), m_manifoldGPU( manifold->returnL(), manifold->returnSurf(0), manifold->returnSurf(1) )
+    : TwoStepRATTLEBD(sysdef, group, manifold,T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta), m_manifoldGPU( manifold->returnL(), manifold->returnR(), manifold->returnSurf() )
     {
     if (!m_exec_conf->isCUDAEnabled())
         {
@@ -46,6 +46,14 @@ TwoStepRATTLEBDGPU::TwoStepRATTLEBDGPU(std::shared_ptr<SystemDefinition> sysdef,
 
     unsigned int group_size = m_group->getNumMembersGlobal();
     GPUArray<unsigned int> tmp_groupTags(group_size, m_exec_conf);
+    ArrayHandle<unsigned int> groupTags(tmp_groupTags, access_location::host);
+
+    for (unsigned int i = 0; i < group_size; i++)
+        {
+        unsigned int tag = m_group->getMemberTag(i);
+        groupTags.data[i] = tag;
+        }
+
     m_groupTags.swap(tmp_groupTags);
 
     m_block_size = 256;

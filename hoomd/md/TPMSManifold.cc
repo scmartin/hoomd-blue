@@ -26,9 +26,29 @@ TPMSManifold::TPMSManifold(std::shared_ptr<SystemDefinition> sysdef,
                   		unsigned int Nx,
                   		unsigned int Ny,
                   		unsigned int Nz)
-  : Manifold(sysdef), m_surf(surf), m_Nx(Nx), m_Ny(Ny), m_Nz(Nz) 
+  : Manifold(sysdef), m_Nx(Nx), m_Ny(Ny), m_Nz(Nz) 
        {
     m_exec_conf->msg->notice(5) << "Constructing TPMSManifold" << endl;
+
+    if( surf == "G" || surf == "GYROID" )
+    { 
+	gyroid = true;
+	m_surf = 1;
+    }
+    else{ 
+	if( surf == "D" || surf == "DIAMOND")
+		{ 
+		diamond = true;
+		m_surf = 2;
+		}
+    else{ 
+	if( surf == "P" || surf == "PRIMITIVE") 
+	{
+		primitive = true;
+		m_surf = 3;
+		}
+	}
+    }
 
     setup();
        }
@@ -87,18 +107,9 @@ Scalar3 TPMSManifold::returnL()
 	return L;
     }
 
-bool TPMSManifold::returnSurf(int j)
-    {
-	if(j==0) return gyroid;
-	else return diamond;
-    }
-
 void TPMSManifold::setup()
     {
 
-    if( m_surf == "G" || m_surf == "GYROID" ) gyroid = true;
-    else if( m_surf == "D" || m_surf == "DIAMOND") diamond = true;
-    else if( m_surf == "P" || m_surf == "PRIMITIVE") primitive = true;
 
     BoxDim box = m_pdata->getGlobalBox();
     Scalar3 box_length = box.getHi() - box.getLo();
@@ -123,6 +134,5 @@ void export_TPMSManifold(pybind11::module& m)
     .def("implicit_function", &TPMSManifold::implicit_function)
     .def("derivative", &TPMSManifold::derivative)
     .def("returnL", &TPMSManifold::returnL)
-    .def("returnSurf", &TPMSManifold::returnSurf)
     ;
     }

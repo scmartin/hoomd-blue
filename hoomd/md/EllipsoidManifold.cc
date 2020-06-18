@@ -26,7 +26,7 @@ EllipsoidManifold::EllipsoidManifold(std::shared_ptr<SystemDefinition> sysdef,
   : Manifold(sysdef), m_inva2(Scalar(1.0)/(a*a)), m_invb2(Scalar(1.0)/(b*b)), m_invc2(Scalar(1.0)/(c*c)), m_P(P) 
        {
     m_exec_conf->msg->notice(5) << "Constructing EllipsoidManifold" << endl;
-
+    m_surf = 7;
     validate();
        }
 
@@ -82,6 +82,5 @@ void export_EllipsoidManifold(pybind11::module& m)
     .def("implicit_function", &EllipsoidManifold::implicit_function)
     .def("derivative", &EllipsoidManifold::derivative)
     .def("returnL", &EllipsoidManifold::returnL)
-    .def("returnSurf", &EllipsoidManifold::returnSurf)
     ;
     }

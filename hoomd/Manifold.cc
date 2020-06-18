@@ -45,6 +45,8 @@ void export_Manifold(pybind11::module& m)
     .def(py::init< std::shared_ptr<SystemDefinition> >())
     .def("implicit_function", &Manifold::implicit_function)
     .def("derivative", &Manifold::derivative)
-    .def("returnLx", &Manifold::returnL)
+    .def("returnL", &Manifold::returnL)
+    .def("returnR", &Manifold::returnR)
+    .def("returnSurf", &Manifold::returnSurf)
     ;
     }

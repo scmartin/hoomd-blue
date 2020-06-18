@@ -39,8 +39,8 @@ class EvaluatorConstraintManifold
 
             NOTE: For the algorithm to work, we must have _rx >= _rz, ry >= _rz, and _rz > 0.
         */
-        DEVICE EvaluatorConstraintManifold(Scalar3 _L, bool _surf1, bool _surf2)
-            : L(_L), surf1(_surf1), surf2(_surf2)
+        DEVICE EvaluatorConstraintManifold(Scalar3 _L, Scalar3 _R, unsigned int _surf)
+            : L(_L), R(_R), surf(_surf)
             {
             }
 
@@ -52,21 +52,27 @@ class EvaluatorConstraintManifold
 
         DEVICE Scalar implicit_function(const Scalar3& U)
         {
-            if (L.x>0) // if ellipsoid is actually a sphere, use easier method
-                {
-                // compute the vector pointing from P to V
-
-          	if(surf1) return slow::sin(L.x*U.x)*slow::cos(L.y*U.y) + slow::sin(L.y*U.y)*slow::cos(L.z*U.z) + slow::sin(L.z*U.z)*slow::cos(L.x*U.x);	
-		else if(surf2) return slow::cos(L.x*U.x)*slow::cos(L.y*U.y)*slow::cos(L.z*U.z) - slow::sin(L.x*U.x)*slow::sin(L.y*U.y)*slow::sin(L.z*U.z);
-		else return slow::cos(L.x*U.x) + slow::cos(L.y*U.y) + slow::cos(L.z*U.z);
-                }
-            else // else use iterative method
-                {
-                if(surf1) return U.z;
-                else if(surf2) return U.y;
-                else return U.x;
-                }
+            if( surf==1) return slow::sin(L.x*U.x)*slow::cos(L.y*U.y) + slow::sin(L.y*U.y)*slow::cos(L.z*U.z) + slow::sin(L.z*U.z)*slow::cos(L.x*U.x);	
+	    else{ 
+	    if(surf==2) return slow::cos(L.x*U.x)*slow::cos(L.y*U.y)*slow::cos(L.z*U.z) - slow::sin(L.x*U.x)*slow::sin(L.y*U.y)*slow::sin(L.z*U.z);
+	    else{ 
+            if(surf==3) return slow::cos(L.x*U.x) + slow::cos(L.y*U.y) + slow::cos(L.z*U.z);
+            else{ 
+            if(surf==4) return U.z;
+            else{ 
+            if(surf==5) return U.y;
+            else{ 
+            if(surf==6) return U.x;
+            else{  
+		 Scalar3 delta = U - L;
+		return dot(delta, delta) - R.x*R.x;
+	    }
             }
+            }
+            }
+            }
+            }
+	}
 
         //! Evaluate the normal unit vector for point on the ellipsoid.
         /*! \param U point on ellipsoid
@@ -74,46 +80,41 @@ class EvaluatorConstraintManifold
         */
         DEVICE Scalar3 evalNormal(const Scalar3& U)
             {
-            Scalar3 N;
-            if (L.x>0) // if ellipsoid is actually a sphere, use easier method
-	    {
-                    if(surf1){
-          	    	N.x = L.x*(slow::cos(L.x*U.x)*slow::cos(L.y*U.y) - slow::sin(L.z*U.z)*slow::sin(L.x*U.x));
-          	    	N.y = L.y*(slow::cos(L.y*U.y)*slow::cos(L.z*U.z) - slow::sin(L.x*U.x)*slow::sin(L.y*U.y));
-          	    	N.z = L.z*(slow::cos(L.z*U.z)*slow::cos(L.x*U.x) - slow::sin(L.y*U.y)*slow::sin(L.z*U.z)); 
-		    }else if(surf2){
-                    	N.x = -L.x*(slow::sin(L.x*U.x)*slow::cos(L.y*U.y)*slow::cos(L.z*U.z) + slow::cos(L.x*U.x)*slow::sin(L.y*U.y)*slow::sin(L.z*U.z));
-                    	N.y = -L.y*(slow::cos(L.x*U.x)*slow::sin(L.y*U.y)*slow::cos(L.z*U.z) + slow::sin(L.x*U.x)*slow::cos(L.y*U.y)*slow::sin(L.z*U.z));
-                    	N.z = -L.z*(slow::cos(L.x*U.x)*slow::cos(L.y*U.y)*slow::sin(L.z*U.z) + slow::sin(L.x*U.x)*slow::sin(L.y*U.y)*slow::cos(L.z*U.z));
-		    }else{
-                    	N.x = -L.x*slow::sin(L.x*U.x);
-                    	N.y = -L.y*slow::sin(L.y*U.y);
-                    	N.z = -L.z*slow::sin(L.z*U.z);
-		   }
-
+            Scalar3 N= make_scalar3(0,0,0);
+            if(surf == 1){
+        	N.x = L.x*(slow::cos(L.x*U.x)*slow::cos(L.y*U.y) - slow::sin(L.z*U.z)*slow::sin(L.x*U.x));
+          	N.y = L.y*(slow::cos(L.y*U.y)*slow::cos(L.z*U.z) - slow::sin(L.x*U.x)*slow::sin(L.y*U.y));
+          	N.z = L.z*(slow::cos(L.z*U.z)*slow::cos(L.x*U.x) - slow::sin(L.y*U.y)*slow::sin(L.z*U.z)); 
+	    }else{ 
+	    if(surf==2){
+                N.x = -L.x*(slow::sin(L.x*U.x)*slow::cos(L.y*U.y)*slow::cos(L.z*U.z) + slow::cos(L.x*U.x)*slow::sin(L.y*U.y)*slow::sin(L.z*U.z));
+                N.y = -L.y*(slow::cos(L.x*U.x)*slow::sin(L.y*U.y)*slow::cos(L.z*U.z) + slow::sin(L.x*U.x)*slow::cos(L.y*U.y)*slow::sin(L.z*U.z));
+                N.z = -L.z*(slow::cos(L.x*U.x)*slow::cos(L.y*U.y)*slow::sin(L.z*U.z) + slow::sin(L.x*U.x)*slow::sin(L.y*U.y)*slow::cos(L.z*U.z));
 	    }else{
-                    if(surf1){
-		    	N.x = 0;
-		    	N.y = 0;
-		    	N.z = 1;
-		    }else if(surf2){
-		    	N.x = 0;
-		    	N.y = 1;
-		    	N.z = 0;
-		    }else{
-		    	N.x = 1;
-		    	N.y = 0;
-		    	N.z = 0;
-		    }
-	    }
+	    if(surf==3){
+          	N.x = -L.x*slow::sin(L.x*U.x);
+                N.y = -L.y*slow::sin(L.y*U.y);
+                N.z = -L.z*slow::sin(L.z*U.z);
+	    }else{
+            if(surf==4) N.z = 1;
+	    else{
+            if(surf==5) N.y = 1;
+	    else{
+            if(surf==6) N.x = 1;
+	    else N = 2*(U - L);
+            }
+            }
+            }
+            }
+            }
 
             return N;
             }
 
     protected:
-        Scalar3 L;      //!< Position of the ellipsoid
-	bool surf1;
-	bool surf2;
+        Scalar3 L;      
+        Scalar3 R;      
+	unsigned int surf;
     };
 
 

@@ -50,9 +50,7 @@ class PYBIND11_EXPORT TPMSManifold : public Manifold
 
         Scalar3 returnL();
 
-        bool returnSurf(int j);
     protected:
-        std::string m_surf; //! determines the specific TPMS
         Scalar m_Nx; //! number of unit cells in x direction
         Scalar m_Ny; //! number of unit cells in x direction
         Scalar m_Nz; //! number of unit cells in x direction

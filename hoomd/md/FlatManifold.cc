@@ -21,15 +21,30 @@ using namespace std;
 FlatManifold::FlatManifold(std::shared_ptr<SystemDefinition> sysdef,
                                std::string surf,
                                Scalar shift)
-  : Manifold(sysdef), m_surf(surf), m_shift(shift) 
+  : Manifold(sysdef), m_shift(shift) 
        {
     m_exec_conf->msg->notice(5) << "Constructing FlatManifold" << endl;
 
-    if( m_surf == "XY" || m_surf == "YX" ) xy = true;
-    else if( m_surf == "XZ" || m_surf == "ZX" ) xz = true;
-    else if( m_surf == "YZ" || m_surf == "ZY" ) yz = true;
+    if( surf == "XY" || surf == "YX" ){ 
+	xy = true;
+	m_surf = 4;
+    }
+    else
+    { 
+	if( surf == "XZ" || surf == "ZX" ){ 
+		xz = true;
+		m_surf = 5;
+	}
+    else
+    { 
+	if( surf == "YZ" || surf == "ZY" ){ 
+		yz = true;
+		m_surf = 6;
+	}
+    }
+    }
 
-       }
+ }
 
 FlatManifold::~FlatManifold() 
        {
@@ -68,21 +83,6 @@ Scalar3 FlatManifold::derivative(Scalar3 point)
 	       }
        }
 
-Scalar3 FlatManifold::returnL()
-    {
-	Scalar3 L;
-	L.x=0;
-	L.y=0;
-	L.z=0;
-	return L;
-    }
-
-bool FlatManifold::returnSurf(int j)
-    {
-	if(j==0) return xy;
-	else return xz;
-    }
-
 
 //! Exports the FlatManifold class to python
 void export_FlatManifold(pybind11::module& m)
@@ -91,7 +91,5 @@ void export_FlatManifold(pybind11::module& m)
     .def(py::init< std::shared_ptr<SystemDefinition>,std::string, Scalar >())
     .def("implicit_function", &FlatManifold::implicit_function)
     .def("derivative", &FlatManifold::derivative)
-    .def("returnL", &FlatManifold::returnL)
-    .def("returnSurf", &FlatManifold::returnSurf)
     ;
     }

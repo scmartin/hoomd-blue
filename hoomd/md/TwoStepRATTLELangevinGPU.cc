@@ -38,7 +38,7 @@ TwoStepRATTLELangevinGPU::TwoStepRATTLELangevinGPU(std::shared_ptr<SystemDefinit
                                        bool noiseless_r,
                            	           Scalar eta,
                                        const std::string& suffix)
-    : TwoStepRATTLELangevin(sysdef, group, manifold, T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta, suffix), m_manifoldGPU( manifold->returnL(), manifold->returnSurf(0), manifold->returnSurf(1) )
+    : TwoStepRATTLELangevin(sysdef, group, manifold, T, seed, use_lambda, lambda, noiseless_t, noiseless_r, eta, suffix), m_manifoldGPU( manifold->returnL(), manifold->returnR(), manifold->returnSurf() )
     {
     if (!m_exec_conf->isCUDAEnabled())
         {
