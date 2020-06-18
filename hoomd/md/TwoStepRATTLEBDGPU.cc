@@ -68,9 +68,11 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
     ArrayHandle<int3> d_image(m_pdata->getImages(), access_location::device, access_mode::readwrite);
 
     ArrayHandle<Scalar4> d_net_force(net_force, access_location::device, access_mode::read);
+    ArrayHandle<Scalar3> d_f_brownian(m_f_brownian, access_location::device, access_mode::read);
     ArrayHandle<Scalar> d_gamma(m_gamma, access_location::device, access_mode::read);
     ArrayHandle<Scalar> d_diameter(m_pdata->getDiameters(), access_location::device, access_mode::read);
-    ArrayHandle<unsigned int> d_tag(m_pdata->getTags(), access_location::device, access_mode::read);
+    ArrayHandle<unsigned int> d_rtag(m_pdata->getRTags(), access_location::device, access_mode::read);
+    ArrayHandle<unsigned int> d_groupTags(m_groupTags, access_location::device, access_mode::read);
 
     // for rotational noise
     ArrayHandle<Scalar3> d_gamma_r(m_gamma_r, access_location::device, access_mode::read);
@@ -80,7 +82,7 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
     ArrayHandle<Scalar4> d_angmom(m_pdata->getAngularMomentumArray(), access_location::device, access_mode::readwrite);
 
     
-    rattle_langevin_step_two_args args;
+    rattle_bd_step_one_args args;
     args.d_gamma = d_gamma.data;
     args.n_types = m_gamma.getNumElements();
     args.use_lambda = m_use_lambda;
@@ -89,11 +91,6 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
     args.eta = m_eta;
     args.timestep = timestep;
     args.seed = m_seed;
-    args.d_sum_bdenergy = NULL;
-    args.d_partial_sum_bdenergy = NULL;
-    args.block_size = m_block_size;
-    args.num_blocks = 0; // handled in driver function
-    args.tally = false;
 
 
     bool aniso = m_aniso;
@@ -120,17 +117,18 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
                           d_image.data,
                           box,
                           d_diameter.data,
-                          d_tag.data,
+                          d_rtag.data,
+                          d_groupTags.data,
                           d_index_array.data,
                           group_size,
                           d_net_force.data,
+                          d_f_brownian.data,
                           d_gamma_r.data,
                           d_orientation.data,
                           d_torque.data,
                           d_inertia.data,
                           d_angmom.data,
                           args,
-                          m_manifoldGPU,
                           aniso,
                           m_deltaT,
                           D,
@@ -154,6 +152,84 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
 void TwoStepRATTLEBDGPU::integrateStepTwo(unsigned int timestep)
     {
     // there is no step 2
+    }
+
+/*! \param timestep Current time step
+    \post Particle positions are moved forward a full time step and velocities are redrawn from the proper distribution.
+*/
+void TwoStepRATTLEBDGPU::IncludeRATTLEForce(unsigned int timestep)
+    {
+
+    // access all the needed data
+    ArrayHandle< unsigned int > d_index_array(m_group->getIndexArray(), access_location::device, access_mode::read);
+    unsigned int group_size = m_group->getNumMembers();
+    const GlobalArray< Scalar4 >& net_force = m_pdata->getNetForce();
+    const GlobalArray<Scalar>&  net_virial = m_pdata->getNetVirial();
+
+    ArrayHandle<Scalar4> d_pos(m_pdata->getPositions(), access_location::device, access_mode::read);
+    ArrayHandle<Scalar4> d_vel(m_pdata->getVelocities(), access_location::device, access_mode::read);
+
+    ArrayHandle<Scalar4> d_net_force(net_force, access_location::device, access_mode::readwrite);
+    ArrayHandle<Scalar3> d_f_brownian(m_f_brownian, access_location::device, access_mode::readwrite);
+    ArrayHandle<Scalar> d_net_virial(net_virial, access_location::device, access_mode::readwrite);
+    ArrayHandle<Scalar> d_gamma(m_gamma, access_location::device, access_mode::read);
+    ArrayHandle<Scalar> d_diameter(m_pdata->getDiameters(), access_location::device, access_mode::read);
+    ArrayHandle<unsigned int> d_rtag(m_pdata->getRTags(), access_location::device, access_mode::read);
+    ArrayHandle<unsigned int> d_groupTags(m_groupTags, access_location::device, access_mode::read);
+
+    unsigned int net_virial_pitch = net_virial.getPitch();
+
+    
+    rattle_bd_step_one_args args;
+    args.d_gamma = d_gamma.data;
+    args.n_types = m_gamma.getNumElements();
+    args.use_lambda = m_use_lambda;
+    args.lambda = m_lambda;
+    args.T = m_T->getValue(timestep);
+    args.eta = m_eta;
+    args.timestep = timestep;
+    args.seed = m_seed;
+
+
+    if (m_exec_conf->allConcurrentManagedAccess())
+        {
+        // prefetch gammas
+        auto& gpu_map = m_exec_conf->getGPUIds();
+        for (unsigned int idev = 0; idev < m_exec_conf->getNumActiveGPUs(); ++idev)
+            {
+            cudaMemPrefetchAsync(m_gamma.get(), sizeof(Scalar)*m_gamma.getNumElements(), gpu_map[idev]);
+            }
+        if (m_exec_conf->isCUDAErrorCheckingEnabled())
+            CHECK_CUDA_ERROR();
+        }
+
+   
+    m_exec_conf->beginMultiGPU();
+
+    // perform the update on the GPU
+    gpu_include_rattle_force(d_pos.data,
+                          d_vel.data,
+                          d_net_force.data,
+                          d_brownian_force.data,
+                          d_net_virial.data,
+                          d_diameter.data,
+                          d_rtag.data,
+                          d_groupTags.data,
+                          group_size,
+                          args,
+                          m_manifoldGPU,
+                          net_virial_pitch,
+                          m_deltaT,
+                          m_group->getGPUPartition());
+
+    if(m_exec_conf->isCUDAErrorCheckingEnabled())
+        CHECK_CUDA_ERROR();
+
+    m_exec_conf->endMultiGPU();
+
+    // done profiling
+    if (m_prof)
+        m_prof->pop(m_exec_conf);
     }
 
 void export_TwoStepRATTLEBDGPU(py::module& m)
