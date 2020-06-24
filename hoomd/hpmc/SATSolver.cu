@@ -18,12 +18,16 @@ __device__ inline void update_active_ring(
     const unsigned int v,
     const unsigned int *d_assignment,
     const unsigned int *d_watch,
+    const unsigned int *d_watch_inequality,
     unsigned int *d_next,
     unsigned int &t,
     unsigned int &h)
     {
-    if (d_assignment[v] == SAT_sentinel && d_watch[v << 1] == SAT_sentinel
-        && d_watch[(v << 1) | 1] == SAT_sentinel)
+    if (d_assignment[v] == SAT_sentinel &&
+        d_watch[v << 1] == SAT_sentinel &&
+        d_watch[(v << 1) | 1] == SAT_sentinel &&
+        d_watch_inequality[v << 1] == SAT_sentinel &&
+        d_watch_inequality[(v << 1) | 1] == SAT_sentinel)
         {
         if (t == SAT_sentinel)
             {
@@ -72,6 +76,7 @@ __device__ inline void update_active_ring(
 __device__ inline bool update_watch_sum(
     const unsigned int false_literal,
     unsigned int *d_watch_inequality,
+    const unsigned int *d_watch,
     unsigned int *d_next_inequality,
     const unsigned int *d_inequality_literals,
     const unsigned int *d_inequality_begin,
@@ -125,7 +130,7 @@ __device__ inline bool update_watch_sum(
                 d_is_watching[j] = 1;
 
                 // add variable to the active ring if it was not being watched before
-                update_active_ring(v, d_assignment, d_watch_inequality, d_next, t, h);
+                update_active_ring(v, d_assignment, d_watch, d_watch_inequality, d_next, t, h);
 
                 // add ours to the list of inequalites watching the literal
                 d_next_inequality[j] = d_watch_inequality[l];
@@ -165,6 +170,7 @@ __device__ inline bool update_watch_sum(
 __device__ inline bool update_watchlist(
     const unsigned int false_literal,
     unsigned int *d_watch,
+    const unsigned int *d_watch_inequality,
     unsigned int *d_next_clause,
     const unsigned int *d_literals,
     const unsigned int *d_assignment,
@@ -199,7 +205,7 @@ __device__ inline bool update_watchlist(
                 // the variable corresponding to 'alternative' might become active at this point,
                 // because it might not be watched anywhere else. In such a case, we insert it at the
                 // 'beginning' of the active ring (that is, just after t)
-                update_active_ring(v, d_assignment, d_watch, d_next, t, h);
+                update_active_ring(v, d_assignment, d_watch, d_watch_inequality, d_next, t, h);
 
                 // insert clause at begining of alternative literal's watch list
                 d_next_clause[c] = d_watch[alternative];
@@ -313,6 +319,8 @@ __device__ inline bool is_unit(
 
 /* A DPLL SAT Solver with lazy data structures,
    implementing Algorithm D of Knuth, TACOP v4f6
+
+   with generalization to Pseudo-Boolean constraints
  */
 __global__ void solve_sat(
     unsigned int *d_watch,
@@ -324,8 +332,8 @@ __global__ void solve_sat(
     unsigned int *d_assignment,
     unsigned int *d_state,
     const unsigned int *d_representative,
+    const unsigned int *d_component_size,
     const unsigned int n_variables,
-    unsigned int *d_unsat,
     unsigned int *d_heap,
     unsigned int *d_watch_inequality,
     unsigned int *d_next_inequality,
@@ -343,26 +351,24 @@ __global__ void solve_sat(
 
     // start from the representatives of every component, all other threads just exit
     if (d_representative[node_idx] != node_idx)
-        {
         return;
-        }
 
-    unsigned int h = d_head[node_idx];
+    unsigned int component = d_representative[node_idx];
+    unsigned int h = d_head[component];
 
     // chase pointers until we find a tail for the ring buffer
     unsigned int v = h;
-    unsigned int n = 0;
     unsigned int t = SAT_sentinel;
     while (v != SAT_sentinel)
         {
         t = v;
         v = d_next[v];
-        n++; // the size of the component
         }
-    if (t != SAT_sentinel)
+    if (node_idx == component && t != SAT_sentinel)
         d_next[t] = h;
 
     // allocate scratch memory for this component
+    unsigned int n = d_component_size[node_idx];
     unsigned int component_start = atomicAdd(d_heap, n);
     unsigned int d = component_start;
 
@@ -461,7 +467,8 @@ __global__ void solve_sat(
                 {
                 k = d_h[d-1];
                 d_assignment[k] = SAT_sentinel;
-                if (d_watch[k << 1] != SAT_sentinel || d_watch[(k << 1) | 1] != SAT_sentinel)
+                if (d_watch[k << 1] != SAT_sentinel || d_watch[(k << 1) | 1] != SAT_sentinel ||
+                    d_watch_inequality[k << 1] != SAT_sentinel || d_watch_inequality[(k << 1) | 1] != SAT_sentinel)
                     {
                     d_next[k] = h;
                     h = k;
@@ -473,8 +480,7 @@ __global__ void solve_sat(
 
             if (d == component_start)
                 {
-                // can't backtrack further, no solutions
-                atomicAdd(d_unsat, 1);
+                // can't backtrack further, no solution (should not get here)
                 return;
                 }
             else
@@ -492,6 +498,7 @@ __global__ void solve_sat(
         // Boolean formula
         update_watchlist((k << 1) | b,
                          d_watch,
+                         d_watch_inequality,
                          d_next_clause,
                          d_literals,
                          d_assignment,
@@ -502,6 +509,7 @@ __global__ void solve_sat(
         // inequalities
         update_watch_sum((k << 1) | b,
             d_watch_inequality,
+            d_watch,
             d_next_inequality,
             d_inequality_literals,
             d_inequality_begin,
@@ -734,6 +742,7 @@ __global__ void initialize_components(
     const unsigned int *d_component_ptr,
     const unsigned int n_variables,
     unsigned int *d_representative,
+    unsigned int *d_component_size,
     unsigned int *d_head,
     unsigned int *d_next)
     {
@@ -752,6 +761,9 @@ __global__ void initialize_components(
 
     // store the reprentative for this node's component in global mem
     d_representative[node_idx] = component;
+
+    // count the number of members of this component
+    atomicAdd(&d_component_size[component], 1);
 
     // assign a sentinel value to the variable for this node
     d_assignment[node_idx] = SAT_sentinel;
@@ -868,8 +880,8 @@ __global__ void reset_mem(
     const unsigned int maxn_literals,
     const unsigned int *d_n_inequality,
     const unsigned int maxn_inequality,
-    unsigned int *d_unsat,
-    unsigned int *d_heap)
+    unsigned int *d_heap,
+    unsigned int *d_component_size)
     {
     unsigned int tidx = threadIdx.x+blockDim.x*blockIdx.x;
     unsigned int literal = threadIdx.y+blockDim.y*blockIdx.y;
@@ -879,7 +891,6 @@ __global__ void reset_mem(
 
     if (tidx == 0 && literal == 0)
         {
-        *d_unsat = 0;
         *d_heap = 0;
         }
 
@@ -889,6 +900,7 @@ __global__ void reset_mem(
         d_next[tidx] = SAT_sentinel;
         d_watch[tidx << 1] = d_watch[(tidx << 1) | 1] = SAT_sentinel;
         d_watch_inequality[tidx << 1] = d_watch_inequality[(tidx << 1) | 1] = SAT_sentinel;
+        d_component_size[tidx] = 0;
         }
 
     if (literal < d_n_literals[tidx])
@@ -1022,16 +1034,14 @@ void initialize_sat_mem(
     unsigned int *d_next_clause,
     unsigned int *d_head,
     unsigned int *d_next,
-    unsigned int *d_h,
-    unsigned int *d_state,
     const unsigned int maxn_literals,
     const unsigned int *d_literals,
     const unsigned int *d_n_literals,
     unsigned int *d_assignment,
     const unsigned int n_variables,
-    unsigned int *d_unsat,
     const unsigned int *d_component_ptr,
     unsigned int *d_representative,
+    unsigned int *d_component_size,
     unsigned int *d_heap,
     const unsigned int maxn_inequality,
     const unsigned int *d_inequality_literals,
@@ -1073,8 +1083,8 @@ void initialize_sat_mem(
         maxn_literals,
         d_n_inequality,
         maxn_inequality,
-        d_unsat,
-        d_heap);
+        d_heap,
+        d_component_size);
 
     // watch all first literals in each clause, and the minimum
     // number of literals in each inequality satisfying the invariant
@@ -1105,6 +1115,7 @@ void initialize_sat_mem(
         d_component_ptr,
         n_variables,
         d_representative,
+        d_component_size,
         d_head,
         d_next);
     }
@@ -1122,9 +1133,9 @@ void solve_sat(
     const unsigned int *d_n_literals,
     unsigned int *d_assignment,
     const unsigned int n_variables,
-    unsigned int *d_unsat,
     const unsigned int *d_component_ptr,
-    unsigned int *d_representative,
+    const unsigned int *d_representative,
+    const unsigned int *d_component_size,
     unsigned int *d_heap,
     unsigned int *d_watch_inequality,
     unsigned int *d_next_inequality,
@@ -1146,8 +1157,8 @@ void solve_sat(
         d_assignment,
         d_state,
         d_representative,
+        d_component_size,
         n_variables,
-        d_unsat,
         d_heap,
         d_watch_inequality,
         d_next_inequality,

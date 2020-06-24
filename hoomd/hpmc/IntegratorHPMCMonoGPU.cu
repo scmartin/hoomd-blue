@@ -110,42 +110,85 @@ __global__ void hpmc_shift(Scalar4 *d_postype,
     d_image[my_pidx] = image;
     }
 
-//!< Kernel to evaluate convergence
-__global__ void hpmc_check_convergence(
-                 const unsigned int *d_trial_move_type,
-                 const unsigned int *d_reject_out_of_cell,
-                 unsigned int *d_reject_in,
-                 unsigned int *d_reject_out,
-                 unsigned int *d_condition,
-                 const unsigned int nwork,
-                 const unsigned work_offset)
+/*! Add implications to the CNF that ensure that a variable is set to zero (accept move),
+    if it is not otherwise constrained
+ */
+__global__ void complete_cnf(
+    const unsigned int n_variables,
+    unsigned int *d_literals,
+    unsigned int *d_n_literals,
+    const unsigned int maxn_literals,
+    unsigned int *d_req_n_literals,
+    unsigned int *d_inequality_literals,
+    unsigned int *d_n_inequality,
+    const unsigned int maxn_inequality)
     {
-    // the particle we are handling
-    unsigned int work_idx = blockIdx.x*blockDim.x + threadIdx.x;
-    if (work_idx >= nwork)
+    unsigned int tidx = threadIdx.x + blockDim.x*blockIdx.x;
+
+    if (tidx >= n_variables)
         return;
-    unsigned int i = work_idx + work_offset;
 
-    // is this particle considered?
-    bool move_active = d_trial_move_type[i] > 0;
+    // we assume that the clauses in row i are all implications for when variable x_i must be true,
+    // therefore we can generate the opposite implication for !x_i by negating the left hand side (except
+    // the variable itself)
 
-    // combine with reject flag from gen_moves for particles which are always rejected
-    bool reject_out_of_cell = d_reject_out_of_cell[i];
-    bool reject = d_reject_out[i];
+    unsigned int nlit = min(maxn_literals,d_n_literals[tidx]);
 
-    // did the answer change since the last iteration?
-    if (move_active && !reject_out_of_cell && reject != d_reject_in[i])
+    // count the number of new terms
+    unsigned int n_new = 0;
+    bool have_unit_clause = false;
+    bool is_unit_clause = true;
+    for (unsigned int i = 0; i < nlit; ++i)
         {
-        // flag that we're not done yet (a trivial race condition upon write)
-        *d_condition = 1;
+        unsigned int l = d_literals[tidx*maxn_literals+i];
+
+        if (l == SAT_sentinel)
+            {
+            have_unit_clause |= is_unit_clause;
+            is_unit_clause = true;
+            continue;
+            }
+
+        if (l != (tidx << 1)) // != x_i ?
+            {
+            n_new++;
+            is_unit_clause = false;
+            }
         }
 
-    // update the reject flags
-    d_reject_out[i] = reject || reject_out_of_cell;
+    if (have_unit_clause)
+        return;
 
-    // clear input
-    d_reject_in[i] = reject_out_of_cell;
+    if (nlit + n_new + 2 > maxn_literals)
+        atomicMax(d_req_n_literals, nlit + n_new + 2);
+    else
+        {
+        d_n_literals[tidx] += n_new + 2; // account for !x_j and marker terms
+
+        unsigned int n = nlit;
+        d_literals[tidx*maxn_literals+(n++)] = (tidx << 1) | 1; // !x_i
+
+        for (unsigned int i = 0; i < nlit; ++i)
+            {
+            unsigned int l = d_literals[tidx*maxn_literals+i];
+
+            if (l == SAT_sentinel)
+                {
+                continue;
+                }
+
+            // add the negated literal to the clause
+            unsigned int v = l >> 1;
+            unsigned int b = l & 1;
+
+            if (v != tidx)
+                d_literals[tidx*maxn_literals+(n++)] = (v << 1) | (b ^ 1);
+            }
+
+        d_literals[tidx*maxn_literals+n] = SAT_sentinel;
+        }
     }
+
 } // end namespace kernel
 
 //! Driver for kernel::hpmc_excell()
@@ -218,45 +261,27 @@ void hpmc_shift(Scalar4 *d_postype,
     hipDeviceSynchronize();
     }
 
-void hpmc_check_convergence(const unsigned int *d_trial_move_type,
-                 const unsigned int *d_reject_out_of_cell,
-                 unsigned int *d_reject_in,
-                 unsigned int *d_reject_out,
-                 unsigned int *d_condition,
-                 const GPUPartition& gpu_partition,
-                 const unsigned int block_size)
+void complete_cnf(
+    const unsigned int n_variables,
+    unsigned int *d_literals,
+    unsigned int *d_n_literals,
+    const unsigned int maxn_literals,
+    unsigned int *d_req_n_literals,
+    unsigned int *d_inequality_literals,
+    unsigned int *d_n_inequality,
+    const unsigned int maxn_inequality)
     {
-    // determine the maximum block size and clamp the input block size down
-    static int max_block_size = -1;
-    if (max_block_size == -1)
-        {
-        hipFuncAttributes attr;
-        hipFuncGetAttributes(&attr, reinterpret_cast<const void*>(kernel::hpmc_check_convergence));
-        max_block_size = attr.maxThreadsPerBlock;
-        }
+    unsigned int block_size = 256;
 
-    // setup the grid to run the kernel
-    unsigned int run_block_size = min(block_size, (unsigned int)max_block_size);
-
-    dim3 threads(run_block_size, 1, 1);
-
-    for (int idev = gpu_partition.getNumActiveGPUs() - 1; idev >= 0; --idev)
-        {
-        auto range = gpu_partition.getRangeAndSetGPU(idev);
-
-        unsigned int nwork = range.second - range.first;
-        const unsigned int num_blocks = nwork/run_block_size + 1;
-        dim3 grid(num_blocks, 1, 1);
-
-        hipLaunchKernelGGL(kernel::hpmc_check_convergence, grid, threads, 0, 0,
-            d_trial_move_type,
-            d_reject_out_of_cell,
-            d_reject_in,
-            d_reject_out,
-            d_condition,
-            nwork,
-            range.first);
-        }
+    hipLaunchKernelGGL(kernel::complete_cnf, n_variables/block_size + 1, block_size, 0, 0,
+        n_variables,
+        d_literals,
+        d_n_literals,
+        maxn_literals,
+        d_req_n_literals,
+        d_inequality_literals,
+        d_n_inequality,
+        maxn_inequality);
     }
 
 } // end namespace gpu

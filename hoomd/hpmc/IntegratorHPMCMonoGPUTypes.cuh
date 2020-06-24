@@ -244,15 +244,15 @@ void hpmc_shift(Scalar4 *d_postype,
                 const Scalar3 shift,
                 const unsigned int block_size);
 
-//! Kernel to evaluate convergence
-void hpmc_check_convergence(
-     const unsigned int *d_trial_move_type,
-     const unsigned int *d_reject_out_of_cell,
-     unsigned int *d_reject_in,
-     unsigned int *d_reject_out,
-     unsigned int *d_condition,
-     const GPUPartition& gpu_partition,
-     unsigned int block_size);
+//! Driver for kernel::complete_cnf
+void complete_cnf(const unsigned int n_variables,
+    unsigned int *d_literals,
+    unsigned int *d_n_literals,
+    const unsigned int maxn_literals,
+    unsigned int *d_req_n_literals,
+    unsigned int *d_inequality_literals,
+    unsigned int *d_n_inequality,
+    const unsigned int maxn_inequality);
 
 } // end namespace gpu
 

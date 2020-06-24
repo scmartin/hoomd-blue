@@ -221,7 +221,7 @@ __global__ void hpmc_update_pdata(Scalar4 *d_postype,
         unsigned int move_type = d_trial_move_type[idx];
         bool move_active = move_type > 0;
         bool move_type_translate = move_type == 1;
-        bool accept = !d_reject[idx] && !d_reject_out_of_cell[idx];
+        bool accept = !d_reject[idx];
 
         unsigned int type_i = __scalar_as_int(d_postype[idx].w);
         Shape shape_i(quat<Scalar>(), d_params[type_i]);

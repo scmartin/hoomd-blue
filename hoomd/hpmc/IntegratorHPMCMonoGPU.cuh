@@ -341,13 +341,18 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
                     unsigned int i = s_idx_group[check_group];
                     if (check_j < N_local)
                         {
-                        // add the literal x_j to a clause for variable i, unless j is a ghost
-                        unsigned int n = atomicAdd(&d_n_literals[i], 1);
+                        // add a 'hard' implication l_j -> x_i (as a disjunction: x_i v ! l_j)
+                        unsigned int n = atomicAdd(&d_n_literals[i], 3);
 
-                        if (n < max_n_literals)
-                            d_literals[i*max_n_literals + n] = (check_j << 1) | !check_old;
+                        if (n + 3 > max_n_literals)
+                            atomicMax(&s_max_num_literals, n + 3);
                         else
-                            atomicMax(&s_max_num_literals, n + 1);
+                            {
+                            unsigned int first_idx = i*max_n_literals + n;
+                            d_literals[first_idx] = (check_j << 1) | check_old;
+                            d_literals[first_idx + 1] = i << 1;
+                            d_literals[first_idx + 2] = SAT_sentinel;
+                            }
                         }
                     }
                 }
@@ -364,50 +369,18 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
         __syncthreads();
         } // end while (s_still_searching)
 
-    if (valid_ptl && master)
+    if (valid_ptl && master && s_reject_group[group])
         {
-        // complete the CNF for particle i
-        if (!s_reject_group[group])
-            {
-            // complete the first disjunction
-            unsigned int n = atomicAdd(&d_n_literals[idx], 2);
-            if (n + 1 >= max_n_literals)
-                atomicMax(&s_max_num_literals, n + 2);
-            else
-                {
-                d_literals[idx*max_n_literals + n] = (idx << 1) | 1; // !x_i
-                d_literals[idx*max_n_literals + n + 1] = SAT_sentinel;
+        // if i is rejected, add a hard constraint for x_i
+        unsigned int n = atomicAdd(&d_n_literals[idx], 2);
 
-                // for every x_j, generate a new disjunction x_i v ^x_j
-                for (unsigned int k = 0; k < n && k < max_n_literals; ++k)
-                    {
-                    unsigned int l = d_literals[idx*max_n_literals + k];
-                    unsigned int v = l >> 1;
-                    unsigned int a = l & 1;
-
-                    unsigned int m = atomicAdd(&d_n_literals[idx], 3);
-                    if (m + 2 >= max_n_literals)
-                        atomicMax(&s_max_num_literals, m + 3);
-                    else
-                        {
-                        d_literals[idx*max_n_literals + m] = idx << 1; // x_i
-                        d_literals[idx*max_n_literals + m + 1] = (v << 1) | (a ^ 1); // ^x_j
-                        d_literals[idx*max_n_literals + m + 2] = SAT_sentinel;
-                        }
-                    }
-                }
-            }
+        if (n + 2 > max_n_literals)
+            atomicMax(&s_max_num_literals, n + 2);
         else
             {
-            // if i is rejected, make the ith clause a unit
-            d_n_literals[idx] = 2;
-            if (max_n_literals > 1)
-                {
-                d_literals[idx*max_n_literals] = idx << 1; // x_i
-                d_literals[idx*max_n_literals + 1] = SAT_sentinel;
-                }
-            else
-                atomicMax(&s_max_num_literals, 2);
+            unsigned int first_idx = idx*max_n_literals + n;
+            d_literals[first_idx] = idx << 1; // x_i
+            d_literals[first_idx + 1] = SAT_sentinel;
             }
         }
 
