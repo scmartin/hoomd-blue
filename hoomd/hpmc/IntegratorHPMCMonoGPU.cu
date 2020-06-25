@@ -118,10 +118,12 @@ __global__ void complete_cnf(
     unsigned int *d_literals,
     unsigned int *d_n_literals,
     const unsigned int maxn_literals,
-    unsigned int *d_req_n_literals,
+    unsigned int *d_req_n_inequality,
     unsigned int *d_inequality_literals,
     unsigned int *d_n_inequality,
-    const unsigned int maxn_inequality)
+    const unsigned int maxn_inequality,
+    double *d_coeff,
+    double *d_rhs)
     {
     unsigned int tidx = threadIdx.x + blockDim.x*blockIdx.x;
 
@@ -159,14 +161,20 @@ __global__ void complete_cnf(
     if (have_unit_clause)
         return;
 
-    if (nlit + n_new + 2 > maxn_literals)
-        atomicMax(d_req_n_literals, nlit + n_new + 2);
+    unsigned int nlit_inequality = d_n_inequality[tidx];
+
+    if (nlit_inequality + n_new + 2 > maxn_inequality)
+        atomicMax(d_req_n_inequality, nlit_inequality + n_new + 2);
     else
         {
-        d_n_literals[tidx] += n_new + 2; // account for !x_j and marker terms
+        // add the new clause as a Pseudo-Boolean constraint
+        d_n_inequality[tidx] += n_new + 2; // account for !x_j and marker terms
 
-        unsigned int n = nlit;
-        d_literals[tidx*maxn_literals+(n++)] = (tidx << 1) | 1; // !x_i
+        unsigned int n = nlit_inequality;
+        d_inequality_literals[tidx*maxn_inequality+n] = (tidx << 1) | 1; // !x_i
+        d_coeff[tidx*maxn_inequality+n] = 1.0;
+        d_rhs[tidx*maxn_inequality+n] = 1.0;
+        n++;
 
         for (unsigned int i = 0; i < nlit; ++i)
             {
@@ -182,10 +190,14 @@ __global__ void complete_cnf(
             unsigned int b = l & 1;
 
             if (v != tidx)
-                d_literals[tidx*maxn_literals+(n++)] = (v << 1) | (b ^ 1);
+                {
+                d_inequality_literals[tidx*maxn_inequality+n] = (v << 1) | (b ^ 1);
+                d_coeff[tidx*maxn_inequality+n] = 1.0;
+                n++;
+                }
             }
 
-        d_literals[tidx*maxn_literals+n] = SAT_sentinel;
+        d_inequality_literals[tidx*maxn_inequality+n] = SAT_sentinel;
         }
     }
 
@@ -266,10 +278,12 @@ void complete_cnf(
     unsigned int *d_literals,
     unsigned int *d_n_literals,
     const unsigned int maxn_literals,
-    unsigned int *d_req_n_literals,
+    unsigned int *d_req_n_inequality,
     unsigned int *d_inequality_literals,
     unsigned int *d_n_inequality,
-    const unsigned int maxn_inequality)
+    const unsigned int maxn_inequality,
+    double *d_coeff,
+    double *d_rhs)
     {
     unsigned int block_size = 256;
 
@@ -278,10 +292,12 @@ void complete_cnf(
         d_literals,
         d_n_literals,
         maxn_literals,
-        d_req_n_literals,
+        d_req_n_inequality,
         d_inequality_literals,
         d_n_inequality,
-        maxn_inequality);
+        maxn_inequality,
+        d_coeff,
+        d_rhs);
     }
 
 } // end namespace gpu

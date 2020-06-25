@@ -261,15 +261,15 @@ class IntegratorHPMCMonoGPU : public IntegratorHPMCMono<Shape>
         GlobalArray<unsigned int> m_reject;                   //!< Flags to reject particle moves, per particle
 
         GlobalArray<unsigned int> m_literals;                 //!< Table of literals attached to variables
-        GlobalArray<unsigned int> m_weight;                   //!< Weights of clauses
         GlobalVector<unsigned int> m_n_literals;              //!< Number of literals per variable
         unsigned int m_max_n_literals;                        //!< Max length of a literals (capacity)
         GlobalArray<unsigned int> m_req_n_literals;           //!< Requested number of literals
+        GlobalArray<unsigned int> m_req_n_inequality;         //!< Requested number of literals for inequalities
 
         // inequalities
         GlobalArray<unsigned int> m_inequality_literals;      //!< Table of literals in inequalities, attached to particles
         GlobalVector<unsigned int> m_n_inequality;            //!< Number of inequality literals per varaible
-        GlobalVector<double> m_rhs;                           //!< Right hand side of every inequality
+        GlobalArray<double> m_rhs;                            //!< Right hand side of every inequality
         GlobalArray<double> m_coeff;                          //!< Linear coefficient of every literal in an inequality
         unsigned int m_max_n_inequality;                      //!< Max number of literals per particles
 
@@ -463,6 +463,14 @@ IntegratorHPMCMonoGPU< Shape >::IntegratorHPMCMonoGPU(std::shared_ptr<SystemDefi
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_n_inequality);
     TAG_ALLOCATION(m_n_inequality);
 
+    GlobalArray<unsigned int>(1, this->m_exec_conf).swap(m_req_n_inequality);
+    TAG_ALLOCATION(m_req_n_inequality);
+
+        {
+        // reset req_n_inequality flag
+        ArrayHandle<unsigned int> h_req_n_inequality(m_req_n_inequality, access_location::host, access_mode::overwrite);
+        *h_req_n_inequality.data = 0;
+        }
     m_max_n_inequality = 0;
 
     GlobalVector<unsigned int>(this->m_exec_conf).swap(m_component_ptr);
@@ -883,9 +891,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
             m_trial_vel.resize(this->m_pdata->getMaxN());
             m_trial_move_type.resize(this->m_pdata->getMaxN());
             m_n_literals.resize(this->m_pdata->getMaxN());
-
             m_n_inequality.resize(this->m_pdata->getMaxN());
-            m_rhs.resize(this->m_pdata->getMaxN());
 
             update_gpu_advice = true;
             }
@@ -1523,11 +1529,13 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 // CNF
                 ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::readwrite);
                 ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::readwrite);
-                ArrayHandle<unsigned int> d_req_n_literals(this->m_req_n_literals, access_location::device, access_mode::readwrite);
 
                 // inequalities
                 ArrayHandle<unsigned int> d_n_inequality(this->m_n_inequality, access_location::device, access_mode::readwrite);
                 ArrayHandle<unsigned int> d_inequality_literals(this->m_inequality_literals, access_location::device, access_mode::readwrite);
+                ArrayHandle<unsigned int> d_req_n_inequality(this->m_req_n_inequality, access_location::device, access_mode::readwrite);
+                ArrayHandle<double> d_coeff(this->m_coeff, access_location::device, access_mode::readwrite);
+                ArrayHandle<double> d_rhs(this->m_rhs, access_location::device, access_mode::readwrite);
 
                 // Add implications for unconstrained variables, tying them to false (accept)
                 unsigned int nvar = this->m_pdata->getN();
@@ -1535,10 +1543,12 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     d_literals.data,
                     d_n_literals.data,
                     m_max_n_literals,
-                    d_req_n_literals.data,
+                    d_req_n_inequality.data,
                     d_inequality_literals.data,
                     d_n_inequality.data,
-                    m_max_n_inequality);
+                    m_max_n_inequality,
+                    d_coeff.data,
+                    d_rhs.data);
                 if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
                     CHECK_CUDA_ERROR();
                 } while (checkReallocate());
@@ -2147,7 +2157,7 @@ bool IntegratorHPMCMonoGPU< Shape >::checkReallocate()
         }
     unsigned int req_size_literals = m_max_n_literals*this->m_pdata->getMaxN();
 
-    // resize
+    // resize CNF literals
     bool reallocate = req_size_literals > m_literals.getNumElements();
     if (reallocate)
         {
@@ -2156,14 +2166,38 @@ bool IntegratorHPMCMonoGPU< Shape >::checkReallocate()
         GlobalArray<unsigned int> literals(req_size_literals, this->m_exec_conf);
         m_literals.swap(literals);
         TAG_ALLOCATION(m_literals);
+        }
 
-        GlobalArray<unsigned int> weight(req_size_literals, this->m_exec_conf);
-        m_weight.swap(weight);
-        TAG_ALLOCATION(m_weight);
+    ArrayHandle<unsigned int> h_req_n_inequality(m_req_n_inequality, access_location::host, access_mode::read);
+    unsigned int req_maxn_inequality = *h_req_n_inequality.data;
+    if (req_maxn_inequality > m_max_n_inequality)
+        {
+        m_max_n_inequality = req_maxn_inequality;
+        }
+    unsigned int req_size_inequalities = m_max_n_inequality*this->m_pdata->getMaxN();
+
+    // resize Pseudo-Boolean literals
+    bool reallocate_inequalities = req_size_inequalities > m_inequality_literals.getNumElements();
+    if (reallocate_inequalities)
+        {
+        this->m_exec_conf->msg->notice(9) << "hpmc resizing inequalities " << m_inequality_literals.getNumElements()
+            << " -> " << req_size_inequalities << std::endl;
+
+        GlobalArray<unsigned int> inequality_literals(req_size_inequalities, this->m_exec_conf);
+        m_inequality_literals.swap(inequality_literals);
+        TAG_ALLOCATION(m_inequality_literals);
+
+        GlobalArray<double> coeff(req_size_inequalities, this->m_exec_conf);
+        m_coeff.swap(coeff);
+        TAG_ALLOCATION(m_coeff);
+
+        GlobalArray<double> rhs(req_size_inequalities, this->m_exec_conf);
+        m_rhs.swap(rhs);
+        TAG_ALLOCATION(m_rhs);
         }
     if (this->m_prof) this->m_prof->pop(this->m_exec_conf);
 
-    return reallocate;
+    return reallocate || reallocate_inequalities;
     }
 
 #ifdef ENABLE_MPI

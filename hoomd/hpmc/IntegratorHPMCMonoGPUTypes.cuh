@@ -249,10 +249,12 @@ void complete_cnf(const unsigned int n_variables,
     unsigned int *d_literals,
     unsigned int *d_n_literals,
     const unsigned int maxn_literals,
-    unsigned int *d_req_n_literals,
+    unsigned int *d_req_n_inequality,
     unsigned int *d_inequality_literals,
     unsigned int *d_n_inequality,
-    const unsigned int maxn_inequality);
+    const unsigned int maxn_inequality,
+    double *d_coeff,
+    double *d_rhs);
 
 } // end namespace gpu
 

@@ -113,7 +113,7 @@ __device__ inline bool update_watch_sum(
         bool found_alternative = false;
         while (watch_sum < rhs)
             {
-            unsigned int l = d_inequality_literals[j++];
+            unsigned int l = d_inequality_literals[j];
 
             if (l == SAT_sentinel)
                 break; // end of inequality
@@ -136,6 +136,7 @@ __device__ inline bool update_watch_sum(
                 d_next_inequality[j] = d_watch_inequality[l];
                 d_watch_inequality[l] = j;
                 }
+            j++;
             }
 
         if (!found_alternative)
@@ -248,7 +249,7 @@ __device__ inline bool is_unit_inequality(
         unsigned int j = c;
         while (true)
             {
-            unsigned int l = d_inequality_literals[j++];
+            unsigned int l = d_inequality_literals[j];
 
             if (l == SAT_sentinel)
                 break; // end of inequality
@@ -258,6 +259,8 @@ __device__ inline bool is_unit_inequality(
 
             if (d_assignment[v] == SAT_sentinel || d_assignment[v] == a ^ 1)
                 s += d_coeff[j];
+
+            j++;
             }
 
         if (s - d_coeff[q] < 0)
@@ -353,8 +356,7 @@ __global__ void solve_sat(
     if (d_representative[node_idx] != node_idx)
         return;
 
-    unsigned int component = d_representative[node_idx];
-    unsigned int h = d_head[component];
+    unsigned int h = d_head[node_idx];
 
     // chase pointers until we find a tail for the ring buffer
     unsigned int v = h;
@@ -364,7 +366,7 @@ __global__ void solve_sat(
         t = v;
         v = d_next[v];
         }
-    if (node_idx == component && t != SAT_sentinel)
+    if (t != SAT_sentinel)
         d_next[t] = h;
 
     // allocate scratch memory for this component
@@ -440,8 +442,8 @@ __global__ void solve_sat(
             {
             // two way branch
             h = d_next[t];
-            d_state[d] = (d_watch[h << 1] == SAT_sentinel) ||
-                         (d_watch[(h << 1) | 1] != SAT_sentinel);
+            d_state[d] = (d_watch[h << 1] == SAT_sentinel && d_watch_inequality[h << 1] == SAT_sentinel) ||
+                         (d_watch[(h << 1) | 1] != SAT_sentinel || d_watch_inequality[(h << 1) | 1] != SAT_sentinel);
             }
 
         if (!backtrack)
@@ -534,7 +536,7 @@ __device__ inline void bitonic_sort_descending(
 
     // next power of two
     unsigned int n2 = 1;
-    while (n2 < n) n2 >>=1;
+    while (n2 < n) n2 <<=1;
 
     for (k=2; k <= n2; k=2*k)
         {
@@ -584,9 +586,10 @@ __global__ void preprocess_inequalities(
         return;
 
     unsigned int nlit = d_n_inequality[tidx];
-    unsigned int first_idx = tidx*maxn_inequality;
 
     // make all coefficients nonnegative
+    unsigned int first_idx = tidx*maxn_inequality;
+    #if 0
     for (unsigned int i = 0; i < nlit; ++i)
         {
         unsigned int q = tidx*maxn_inequality+i;
@@ -606,8 +609,10 @@ __global__ void preprocess_inequalities(
             d_rhs[first_idx] += fabs(d_coeff[q]);
             }
         }
+    #endif
 
     // sort literals in every inequality by their coefficients
+    first_idx = tidx*maxn_inequality;
     for (unsigned int i = 0; i < nlit; ++i)
         {
         unsigned int q = tidx*maxn_inequality+i;
@@ -693,7 +698,7 @@ __global__ void setup_watch_list(
     bool adding_watches = true;
     unsigned int first_idx = tidx*maxn_inequality;
     double watch_sum = 0.0;
-    double rhs = d_rhs[first_idx];
+    double rhs;
 
     for (unsigned int i = 0; i < nlit; ++i)
         {
@@ -707,6 +712,9 @@ __global__ void setup_watch_list(
             watch_sum = 0.0;
             continue;
             }
+
+        if (q == first_idx)
+            rhs = d_rhs[q];
 
         // initialize pointer
         d_inequality_begin[q] = first_idx;
