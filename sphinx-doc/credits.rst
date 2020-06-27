@@ -213,6 +213,7 @@ Vyas Ramasubramani, University of Michigan
  * Enable simulation of floppy bodies that can be integrated separately but are ignored by the NeighborList
  * Enabled use of shared memory for Evaluator structs
  * Added per-type shape information to anisotropic pair potentials
+ * Fix cutoff rescaling in Gay-Berne potential
 
 Nathan Horst
 
@@ -287,6 +288,10 @@ Luis Rivera-Rivera, University of Michigan
 Alex Yang, Vanderbilt University
 
   * ``hoomd.md.dihedral.harmonic`` update for phase shift
+
+Geert Kapteijns, University of Amsterdam
+
+  * Bug fixes.
 
 HPMC developers
 ---------------

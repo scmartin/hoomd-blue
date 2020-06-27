@@ -22,6 +22,11 @@ from the ``conda-forge`` channel::
 
     $ conda install -c conda-forge hoomd
 
+A build of HOOMD with support for NVIDIA GPUs is also available from the
+``conda-forge`` channel::
+
+    $ conda install -c conda-forge hoomd=*=*gpu*
+
 Compiling from source
 =====================
 
@@ -109,7 +114,7 @@ https://glotzerlab.engin.umich.edu/Downloads/hoomd
 
 .. code-block:: bash
 
-   $ curl -O https://glotzerlab.engin.umich.edu/Downloads/hoomd/hoomd-v2.9.0.tar.gz
+   $ curl -O https://glotzerlab.engin.umich.edu/Downloads/hoomd/hoomd-v2.9.2.tar.gz
 
 Or, clone using Git:
 
