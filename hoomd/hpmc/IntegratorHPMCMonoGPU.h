@@ -1099,8 +1099,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     d_excell_idx.data,
                     d_excell_size.data,
                     m_excell_list_indexer,
-                    0, // d_reject_in
-                    d_reject.data,
                     this->m_exec_conf->dev_prop,
                     this->m_pdata->getGPUPartition(),
                     0,// streams,
@@ -1165,12 +1163,14 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 this->m_exec_conf->endMultiGPU();
 
                     {
+                    ArrayHandle<unsigned int> d_reject(this->m_reject, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::overwrite);
                     ArrayHandle<unsigned int> d_req_n_literals(this->m_req_n_literals, access_location::device, access_mode::readwrite);
                     ArrayHandle<unsigned int> d_n_inequality(this->m_n_inequality, access_location::device, access_mode::overwrite);
 
                     // reset mem
+                    hipMemsetAsync(d_reject.data, 0, sizeof(unsigned int)*m_reject.getNumElements());
                     hipMemsetAsync(d_n_literals.data, 0, sizeof(unsigned int)*m_n_literals.getNumElements());
                     hipMemsetAsync(d_n_inequality.data, 0, sizeof(unsigned int)*m_n_inequality.getNumElements());
                     if (this->m_exec_conf->isCUDAErrorCheckingEnabled())
@@ -1255,8 +1255,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                         d_excell_idx.data,
                         d_excell_size.data,
                         m_excell_list_indexer,
-                        d_reject.data,
-                        0, // reject_out
                         this->m_exec_conf->dev_prop,
                         this->m_pdata->getGPUPartition(),
                         &m_narrow_phase_streams.front(),
@@ -1526,9 +1524,83 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     }
                 #endif
 
+                if (this->m_patch && !this->m_patch_log)
+                    {
+                    // access data for proposed moves
+                    ArrayHandle<Scalar4> d_trial_postype(m_trial_postype, access_location::device, access_mode::read);
+                    ArrayHandle<Scalar4> d_trial_orientation(m_trial_orientation, access_location::device, access_mode::read);
+                    ArrayHandle<unsigned int> d_trial_move_type(m_trial_move_type, access_location::device, access_mode::read);
+
+                    // access the particle data
+                    ArrayHandle<Scalar4> d_postype(this->m_pdata->getPositions(), access_location::device, access_mode::read);
+                    ArrayHandle<Scalar4> d_orientation(this->m_pdata->getOrientationArray(), access_location::device, access_mode::read);
+
+                    ArrayHandle<Scalar> d_charge(this->m_pdata->getCharges(), access_location::device, access_mode::read);
+                    ArrayHandle<Scalar> d_diameter(this->m_pdata->getDiameters(), access_location::device, access_mode::read);
+                    ArrayHandle<Scalar> d_additive_cutoff(m_additive_cutoff, access_location::device, access_mode::read);
+
+                    /*
+                     *  evaluate energy of old and new configuration simultaneously against the old and the new configuration
+                     */
+                    ArrayHandle<unsigned int> d_update_order_by_ptl(m_update_order.get(), access_location::device, access_mode::read);
+                    ArrayHandle<unsigned int> d_reject_out_of_cell(m_reject_out_of_cell, access_location::device, access_mode::read);
+
+                    // inequalities
+                    ArrayHandle<unsigned int> d_n_inequality(this->m_n_inequality, access_location::device, access_mode::readwrite);
+                    ArrayHandle<unsigned int> d_inequality_literals(this->m_inequality_literals, access_location::device, access_mode::readwrite);
+                    ArrayHandle<unsigned int> d_req_n_inequality(this->m_req_n_inequality, access_location::device, access_mode::readwrite);
+                    ArrayHandle<double> d_coeff(this->m_coeff, access_location::device, access_mode::readwrite);
+                    ArrayHandle<double> d_rhs(this->m_rhs, access_location::device, access_mode::readwrite);
+
+                    // CNF
+                    ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::readwrite);
+                    ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::readwrite);
+                    ArrayHandle<unsigned int> d_req_n_literals(this->m_req_n_literals, access_location::device, access_mode::readwrite);
+
+                    PatchEnergy::gpu_args_t patch_args(
+                        d_postype.data,
+                        d_orientation.data,
+                        d_trial_postype.data,
+                        d_trial_orientation.data,
+                        d_trial_move_type.data,
+                        this->m_cl->getCellIndexer(),
+                        this->m_cl->getDim(),
+                        ghost_width,
+                        this->m_pdata->getN(),
+                        this->m_seed,
+                        timestep,
+                        this->m_exec_conf->getRank()*this->m_nselect + i,
+                        this->m_pdata->getNTypes(),
+                        box,
+                        d_excell_idx.data,
+                        d_excell_size.data,
+                        m_excell_list_indexer,
+                        this->m_patch->getRCut(),
+                        d_additive_cutoff.data,
+                        d_update_order_by_ptl.data,
+                        d_charge.data,
+                        d_diameter.data,
+                        d_reject_out_of_cell.data,
+                        d_n_inequality.data,
+                        d_inequality_literals.data,
+                        m_max_n_inequality,
+                        d_req_n_inequality.data,
+                        d_coeff.data,
+                        d_rhs.data,
+                        d_n_literals.data,
+                        d_literals.data,
+                        m_max_n_literals,
+                        d_req_n_literals.data,
+                        this->m_pdata->getGPUPartition());
+
+                    // compute patch energy on default stream
+                    this->m_patch->computePatchEnergyGPU(patch_args, 0);
+                    } // end patch energy
+
                 // CNF
                 ArrayHandle<unsigned int> d_literals(this->m_literals, access_location::device, access_mode::readwrite);
                 ArrayHandle<unsigned int> d_n_literals(this->m_n_literals, access_location::device, access_mode::readwrite);
+                ArrayHandle<unsigned int> d_req_n_literals(this->m_req_n_literals, access_location::device, access_mode::readwrite);
 
                 // inequalities
                 ArrayHandle<unsigned int> d_n_inequality(this->m_n_inequality, access_location::device, access_mode::readwrite);
@@ -1543,6 +1615,7 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     d_literals.data,
                     d_n_literals.data,
                     m_max_n_literals,
+                    d_req_n_literals.data,
                     d_req_n_inequality.data,
                     d_inequality_literals.data,
                     d_n_inequality.data,
@@ -1640,64 +1713,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                 m_tuner_depletants_accept->end();
                 this->m_exec_conf->endMultiGPU();
                 }
-            #endif
-
-            #if 0
-            if (this->m_patch && !this->m_patch_log)
-                {
-                // access data for proposed moves
-                ArrayHandle<Scalar4> d_trial_postype(m_trial_postype, access_location::device, access_mode::read);
-                ArrayHandle<Scalar4> d_trial_orientation(m_trial_orientation, access_location::device, access_mode::read);
-                ArrayHandle<unsigned int> d_trial_move_type(m_trial_move_type, access_location::device, access_mode::read);
-
-                // access the particle data
-                ArrayHandle<Scalar4> d_postype(this->m_pdata->getPositions(), access_location::device, access_mode::read);
-                ArrayHandle<Scalar4> d_orientation(this->m_pdata->getOrientationArray(), access_location::device, access_mode::read);
-
-                ArrayHandle<Scalar> d_charge(this->m_pdata->getCharges(), access_location::device, access_mode::read);
-                ArrayHandle<Scalar> d_diameter(this->m_pdata->getDiameters(), access_location::device, access_mode::read);
-                ArrayHandle<Scalar> d_additive_cutoff(m_additive_cutoff, access_location::device, access_mode::read);
-
-                /*
-                 *  evaluate energy of old and new configuration simultaneously against the old and the new configuration
-                 */
-                ArrayHandle<unsigned int> d_update_order_by_ptl(m_update_order.get(), access_location::device, access_mode::read);
-                ArrayHandle<unsigned int> d_reject_out_of_cell(m_reject_out_of_cell, access_location::device, access_mode::read);
-                ArrayHandle<unsigned int> d_reject(m_reject, access_location::device, access_mode::read);
-                ArrayHandle<unsigned int> d_reject_out(m_reject_out, access_location::device, access_mode::readwrite);
-
-                // future optimization opportunity: put patch on its own stream
-                PatchEnergy::gpu_args_t patch_args(
-                    d_postype.data,
-                    d_orientation.data,
-                    d_trial_postype.data,
-                    d_trial_orientation.data,
-                    d_trial_move_type.data,
-                    this->m_cl->getCellIndexer(),
-                    this->m_cl->getDim(),
-                    ghost_width,
-                    this->m_pdata->getN(),
-                    this->m_seed,
-                    timestep,
-                    this->m_exec_conf->getRank()*this->m_nselect + i,
-                    this->m_pdata->getNTypes(),
-                    box,
-                    d_excell_idx.data,
-                    d_excell_size.data,
-                    m_excell_list_indexer,
-                    this->m_patch->getRCut(),
-                    d_additive_cutoff.data,
-                    d_update_order_by_ptl.data,
-                    d_reject.data,
-                    d_reject_out.data,
-                    d_charge.data,
-                    d_diameter.data,
-                    d_reject_out_of_cell.data,
-                    this->m_pdata->getGPUPartition());
-
-                // compute patch energy on default stream
-                this->m_patch->computePatchEnergyGPU(patch_args, 0);
-                } // end patch energy
             #endif
 
             unsigned int nvariables = this->m_pdata->getN();
@@ -1910,7 +1925,6 @@ void IntegratorHPMCMonoGPU< Shape >::update(unsigned int timestep)
                     d_trial_vel.data,
                     d_trial_move_type.data,
                     d_reject.data,
-                    d_reject_out_of_cell.data,
                     m_tuner_update_pdata->getParam()
                     );
                 gpu::hpmc_update_pdata<Shape>(args, params.data());

@@ -49,12 +49,12 @@ __device__ inline void update_active_ring(
            coefficients from large to small, and a watch list
     Output: the updated watch list such that the invariant
 
-        S_W >= b
+        S_W >= b + a_max
 
     is maintained, where S_W is the sum of coefficients of watched literals.
 
-    This implements a variant of the lazy data structures for Pseudo-Boolean constraints
-    discussed in Chai and Kuehlmann, "A Fast Pseudo-Boolean Constraint Solver",
+    This implements the lazy data structures for Pseudo-Boolean constraints
+    discussed by Chai and Kuehlmann, "A Fast Pseudo-Boolean Constraint Solver",
     http://dx.doi.org/10.1145/775832.776041,
     and Sheini and Sakallah, "Pueblo: A Hybrid Pseudo-Boolean SAT Solver",
     http://dx.doi.org/10.3233/SAT190020
@@ -73,7 +73,7 @@ __device__ inline void update_active_ring(
     \param h Current head of active ring
     \param t Current tail of active ring
  */
-__device__ inline bool update_watch_sum(
+__device__ inline void update_watch_sum(
     const unsigned int false_literal,
     unsigned int *d_watch_inequality,
     const unsigned int *d_watch,
@@ -105,18 +105,22 @@ __device__ inline bool update_watch_sum(
         // update the watch sum
         double watch_sum = d_watch_sum[c];
 
+        // largest cefficient
+        double a_max = d_coeff[c];
+
         // unwatch the literal inside the clause
         d_is_watching[q] = 0;
         watch_sum -= d_coeff[q];
 
         unsigned int j = c;
-        bool found_alternative = false;
-        while (watch_sum < rhs)
+        while (watch_sum < rhs + a_max)
             {
             unsigned int l = d_inequality_literals[j];
 
             if (l == SAT_sentinel)
-                break; // end of inequality
+                {
+                break; // should not get here
+                }
 
             unsigned int v = l >> 1;
             unsigned int a = l & 1;
@@ -126,7 +130,6 @@ __device__ inline bool update_watch_sum(
                 watch_sum += d_coeff[j];
 
                 // add this inequality to the watch list for l
-                found_alternative = true;
                 d_is_watching[j] = 1;
 
                 // add variable to the active ring if it was not being watched before
@@ -139,16 +142,11 @@ __device__ inline bool update_watch_sum(
             j++;
             }
 
-        if (!found_alternative)
-            return false; // should never get here
-
         d_watch_sum[c] = watch_sum;
 
         // follow the watch list to the next inequality
         q = d_next_inequality[q];
         }
-
-    return true;
     }
 
 /*! 1. Clear the watch list for a literal
@@ -168,7 +166,7 @@ __device__ inline bool update_watch_sum(
     \param h Head of active ring (the list unassigned variables being watched)
     \param t Tail of active ring
  */
-__device__ inline bool update_watchlist(
+__device__ inline void update_watchlist(
     const unsigned int false_literal,
     unsigned int *d_watch,
     const unsigned int *d_watch_inequality,
@@ -189,20 +187,17 @@ __device__ inline bool update_watchlist(
         {
         unsigned int next = d_next_clause[c];
 
-        bool found_alternative = false;
         unsigned int j = c;
         while (true)
             {
             unsigned int alternative = d_literals[j++];
             if (alternative == SAT_sentinel)
-                break; // end of clause
+                break; // end of clause, should not get here
 
             unsigned int v = alternative >> 1;
             unsigned int a = alternative & 1;
             if (d_assignment[v] == SAT_sentinel || d_assignment[v] == a ^ 1)
                 {
-                found_alternative = true;
-
                 // the variable corresponding to 'alternative' might become active at this point,
                 // because it might not be watched anywhere else. In such a case, we insert it at the
                 // 'beginning' of the active ring (that is, just after t)
@@ -215,13 +210,8 @@ __device__ inline bool update_watchlist(
                 }
             }
 
-        if (!found_alternative)
-            return false; // should never get here
-
         c = next;
         }
-
-    return true;
     }
 
 // Returns true if the watched literal is forced true by an inequality and a partial assignment
@@ -232,6 +222,7 @@ __device__ inline bool is_unit_inequality(
     const unsigned int *d_next_inequality,
     const double *d_rhs,
     const double *d_coeff,
+    const double *d_watch_sum,
     const unsigned int *d_inequality_literals,
     const unsigned int *d_assignment
     )
@@ -241,33 +232,13 @@ __device__ inline bool is_unit_inequality(
 
     while (q != SAT_sentinel)
         {
-        unsigned int c = d_inequality_begin[q];
-
         // compute the slack of this inequality
-        double s = -d_rhs[c];
+        unsigned int c = d_inequality_begin[q];
+        double watch_sum = d_watch_sum[c];
+        double rhs = d_rhs[c];
 
-        unsigned int j = c;
-        while (true)
-            {
-            unsigned int l = d_inequality_literals[j];
-
-            if (l == SAT_sentinel)
-                break; // end of inequality
-
-            unsigned int v = l >> 1;
-            unsigned int a = l & 1;
-
-            if (d_assignment[v] == SAT_sentinel || d_assignment[v] == a ^ 1)
-                s += d_coeff[j];
-
-            j++;
-            }
-
-        if (s - d_coeff[q] < 0)
-            {
-            // this literal is implied true
+        if (watch_sum - d_coeff[q] < rhs)
             return true;
-            }
 
         q = d_next_inequality[q];
         }
@@ -377,14 +348,16 @@ __global__ void solve_sat(
     while (true)
         {
         if (t == SAT_sentinel)
+            {
             return; // SAT
+            }
 
         // fetch next variable
         unsigned int k = t;
 
         bool backtrack = false;
         bool unit = false;
-        do
+        while (true)
             {
             // look for unit clauses
             h = d_next[k];
@@ -400,6 +373,7 @@ __global__ void solve_sat(
                                             d_next_inequality,
                                             d_rhs,
                                             d_coeff,
+                                            d_watch_sum,
                                             d_inequality_literals,
                                             d_assignment);
 
@@ -414,6 +388,7 @@ __global__ void solve_sat(
                                             d_next_inequality,
                                             d_rhs,
                                             d_coeff,
+                                            d_watch_sum,
                                             d_inequality_literals,
                                             d_assignment);
 
@@ -434,9 +409,13 @@ __global__ void solve_sat(
                 break;
                 }
 
+            if (h == t)
+                {
+                break;
+                }
+
             k = h;
             }
-        while (h != t);
 
         if (!backtrack && !unit)
             {
@@ -526,42 +505,70 @@ __global__ void solve_sat(
         }
     }
 
-//! Sort values by key using bitonic sort
-__device__ inline void bitonic_sort_descending(
-    double *keys,
-    unsigned int *values,
-    unsigned int n)
+__device__ inline void swap_keyval(double *keys, unsigned int *values, unsigned int i, unsigned int j)
     {
-    unsigned int i,j,k;
+    double t = keys[j];
+    keys[j] = keys[i];
+    keys[i] = t;
 
-    // next power of two
-    unsigned int n2 = 1;
-    while (n2 < n) n2 <<=1;
+    unsigned int v = values[j];
+    values[j] = values[i];
+    values[i] = v;
+    }
 
-    for (k=2; k <= n2; k=2*k)
+//! Sort values by key using iterative heap sort
+__device__ inline void build_max_heap(double *keys, unsigned int *values, int n)
+    {
+    for (int i = 1; i < n; i++)
         {
-        for (j = k >> 1; j > 0; j = j >> 1)
+        // if child is smaller than parent
+        if (keys[i] < keys[(i - 1) / 2])
             {
-            for (i = 0; i < n2; i++)
-                {
-                unsigned int ij = i ^ j;
-                if (ij > i && i < n && ij < n)
-                    {
-                    if ((i & k) == 0 && keys[i] < keys[ij] ||
-                        (i & k) != 0 && keys[i] > keys[ij])
-                        {
-                        // swap
-                        double t = keys[i];
-                        keys[i] = keys[ij];
-                        keys[ij] = t;
+            int j = i;
 
-                        unsigned int v = values[i];
-                        values[i] = values[ij];
-                        values[ij] = v;
-                        }
-                    }
+            // swap child and parent until
+            // parent is larger
+            while (keys[j] < keys[(j - 1) / 2])
+                {
+                swap_keyval(keys, values, j, (j-1)/2);
+                j = (j - 1) / 2;
                 }
             }
+        }
+    }
+
+__device__ inline void heap_sort_descending(double *keys, unsigned int *values, int n)
+    {
+    build_max_heap(keys, values, n);
+
+    for (int i = n - 1; i > 0; i--)
+        {
+        // swap value of first indexed
+        // with last indexed
+        swap_keyval(keys, values, 0, i);
+
+        // maintaining heap property
+        // after each swapping
+        int j = 0, index;
+
+        do
+            {
+            index = (2 * j + 1);
+
+            // if left child is larger than
+            // right child point index variable
+            // to right child
+            if (keys[index] > keys[index + 1] && index < (i - 1))
+                index++;
+
+            // if parent is larger than child
+            // then swapping parent with child
+            // having higher value
+            if (keys[j] > keys[index] && index < i)
+                swap_keyval(keys,values,j, index);
+
+            j = index;
+            } while (index < i);
         }
     }
 
@@ -621,7 +628,7 @@ __global__ void preprocess_inequalities(
         if (l == SAT_sentinel)
             {
             // end of inequality, sort the preceding sequence
-            bitonic_sort_descending(d_coeff + first_idx,
+            heap_sort_descending(d_coeff + first_idx,
                          d_inequality_literals + first_idx,
                          q - first_idx);
 
@@ -699,6 +706,7 @@ __global__ void setup_watch_list(
     unsigned int first_idx = tidx*maxn_inequality;
     double watch_sum = 0.0;
     double rhs;
+    double a_max;
 
     for (unsigned int i = 0; i < nlit; ++i)
         {
@@ -707,6 +715,7 @@ __global__ void setup_watch_list(
 
         if (l == SAT_sentinel)
             {
+            d_watch_sum[first_idx] = watch_sum;
             adding_watches = true;
             first_idx = q+1;
             watch_sum = 0.0;
@@ -714,11 +723,13 @@ __global__ void setup_watch_list(
             }
 
         if (q == first_idx)
+            {
             rhs = d_rhs[q];
+            a_max = d_coeff[q];
+            }
 
         // initialize pointer
         d_inequality_begin[q] = first_idx;
-
         d_is_watching[q] = adding_watches;
 
         if (adding_watches)
@@ -733,11 +744,8 @@ __global__ void setup_watch_list(
                 p = atomicCAS(&d_next_inequality[p], SAT_sentinel, q);
                 }
 
-            if (watch_sum >= rhs)
-                {
+            if (watch_sum >= rhs + a_max)
                 adding_watches = false;
-                d_watch_sum[first_idx] = watch_sum;
-                }
             }
         }
     }

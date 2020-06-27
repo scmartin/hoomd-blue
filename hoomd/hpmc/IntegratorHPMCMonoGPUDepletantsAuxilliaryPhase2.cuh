@@ -781,7 +781,6 @@ void depletants_launcher_phase2(const hpmc_args_t& args,
             assert(args.d_reject_out_of_cell);
             assert(implicit_args.d_implicit_count);
             assert(args.d_update_order_by_ptl);
-            assert(args.d_reject_in);
             assert(auxilliary_args.d_tag);
             assert(auxilliary_args.d_vel);
             assert(auxilliary_args.d_trial_vel);
@@ -820,7 +819,7 @@ void depletants_launcher_phase2(const hpmc_args_t& args,
                                  implicit_args.depletant_idx,
                                  implicit_args.d_implicit_count + idev*implicit_args.implicit_counters_pitch,
                                  args.d_update_order_by_ptl,
-                                 args.d_reject_in,
+                                 0,// args.d_reject_in,
                                  auxilliary_args.ntrial,
                                  auxilliary_args.d_tag,
                                  auxilliary_args.d_vel,

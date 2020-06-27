@@ -58,8 +58,6 @@ struct hpmc_args_t
                 unsigned int *_d_excell_idx,
                 const unsigned int *_d_excell_size,
                 const Index2D& _excli,
-                const unsigned int *_d_reject_in,
-                unsigned int *_d_reject_out,
                 const hipDeviceProp_t &_devprop,
                 const GPUPartition& _gpu_partition,
                 const hipStream_t *_streams,
@@ -102,8 +100,6 @@ struct hpmc_args_t
                   d_excell_idx(_d_excell_idx),
                   d_excell_size(_d_excell_size),
                   excli(_excli),
-                  d_reject_in(_d_reject_in),
-                  d_reject_out(_d_reject_out),
                   devprop(_devprop),
                   gpu_partition(_gpu_partition),
                   streams(_streams),
@@ -149,8 +145,6 @@ struct hpmc_args_t
     unsigned int *d_excell_idx;       //!< Expanded cell list
     const unsigned int *d_excell_size;//!< Size of expanded cells
     const Index2D& excli;             //!< Excell indexer
-    const unsigned int *d_reject_in;  //!< Reject flags per particle (in)
-    unsigned int *d_reject_out;       //!< Reject flags per particle (out)
     const hipDeviceProp_t& devprop;     //!< CUDA device properties
     const GPUPartition& gpu_partition; //!< Multi-GPU partition
     const hipStream_t *streams;        //!< kernel streams
@@ -176,7 +170,6 @@ struct hpmc_update_args_t
         const Scalar4 *_d_trial_vel,
         const unsigned int *_d_trial_move_type,
         const unsigned int *_d_reject,
-        const unsigned int *_d_reject_out_of_cell,
         const unsigned int _block_size)
         : d_postype(_d_postype),
           d_orientation(_d_orientation),
@@ -190,7 +183,6 @@ struct hpmc_update_args_t
           d_trial_vel(_d_trial_vel),
           d_trial_move_type(_d_trial_move_type),
           d_reject(_d_reject),
-          d_reject_out_of_cell(_d_reject_out_of_cell),
           block_size(_block_size)
      {}
 
@@ -207,7 +199,6 @@ struct hpmc_update_args_t
     const Scalar4 *d_trial_vel;
     const unsigned int *d_trial_move_type;
     const unsigned int *d_reject;
-    const unsigned int *d_reject_out_of_cell;
     const unsigned int block_size;
     };
 
@@ -249,6 +240,7 @@ void complete_cnf(const unsigned int n_variables,
     unsigned int *d_literals,
     unsigned int *d_n_literals,
     const unsigned int maxn_literals,
+    unsigned int *d_req_n_literals,
     unsigned int *d_req_n_inequality,
     unsigned int *d_inequality_literals,
     unsigned int *d_n_inequality,

@@ -38,7 +38,7 @@ void PatchEnergyJITGPU::computePatchEnergyGPU(const gpu_args_t& args, hipStream_
 
     const unsigned int min_shared_bytes = args.num_types * sizeof(Scalar);
 
-    unsigned int shared_bytes = n_groups * (sizeof(unsigned int) + 2*sizeof(Scalar4) + 2*sizeof(Scalar3) + 2*sizeof(Scalar) + 2*sizeof(float))
+    unsigned int shared_bytes = n_groups * (2*sizeof(unsigned int) + 2*sizeof(Scalar4) + 2*sizeof(Scalar3) + 2*sizeof(Scalar) + sizeof(float))
         + max_queue_size * 2 * sizeof(unsigned int)
         + min_shared_bytes;
 
@@ -62,7 +62,7 @@ void PatchEnergyJITGPU::computePatchEnergyGPU(const gpu_args_t& args, hipStream_
         n_groups = run_block_size / (tpp*eval_threads);
         max_queue_size = n_groups*tpp;
 
-        shared_bytes = n_groups * (sizeof(unsigned int) + 2*sizeof(Scalar4) + 2*sizeof(Scalar3) + 2*sizeof(Scalar) + 2*sizeof(float))
+        shared_bytes = n_groups * (2*sizeof(unsigned int) + 2*sizeof(Scalar4) + 2*sizeof(Scalar3) + 2*sizeof(Scalar) + sizeof(float))
             + max_queue_size * 2 * sizeof(unsigned int)
             + min_shared_bytes;
         }
@@ -96,8 +96,6 @@ void PatchEnergyJITGPU::computePatchEnergyGPU(const gpu_args_t& args, hipStream_
             args.d_excell_size,
             args.excli,
             args.d_update_order_by_ptl,
-            args.d_reject_in,
-            args.d_reject_out,
             args.seed,
             args.timestep,
             args.select,
@@ -113,7 +111,18 @@ void PatchEnergyJITGPU::computePatchEnergyGPU(const gpu_args_t& args, hipStream_
             max_queue_size,
             range.first,
             nwork,
-            max_extra_bytes);
+            max_extra_bytes,
+            args.d_n_inequality,
+            args.d_inequality_literals,
+            args.maxn_inequality,
+            args.d_req_n_inequality,
+            args.d_coeff,
+            args.d_rhs,
+            args.d_n_literals,
+            args.d_literals,
+            args.maxn_literals,
+            args.d_req_n_literals
+            );
 
         if (res != CUDA_SUCCESS)
             {

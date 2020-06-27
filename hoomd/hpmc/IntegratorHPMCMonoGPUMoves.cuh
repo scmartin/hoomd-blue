@@ -52,7 +52,6 @@ __global__ void hpmc_gen_moves(const Scalar4 *d_postype,
                            Scalar4 *d_trial_vel,
                            unsigned int *d_trial_move_type,
                            unsigned int *d_reject_out_of_cell,
-                           unsigned int *d_reject,
                            const typename Shape::param_type *d_params)
     {
     // load the per type pair parameters into shared memory
@@ -174,7 +173,6 @@ __global__ void hpmc_gen_moves(const Scalar4 *d_postype,
 
     // initialize reject flag
     d_reject_out_of_cell[idx] = reject;
-    d_reject[idx] = 0;
     }
 
 //! Kernel to update particle data and statistics after acceptance
@@ -191,7 +189,6 @@ __global__ void hpmc_update_pdata(Scalar4 *d_postype,
                                   const Scalar4 *d_trial_vel,
                                   const unsigned int *d_trial_move_type,
                                   const unsigned int *d_reject,
-                                  const unsigned int *d_reject_out_of_cell,
                                   const typename Shape::param_type *d_params)
     {
     // determine which update step we are handling
@@ -320,7 +317,6 @@ void hpmc_gen_moves(const hpmc_args_t& args, const typename Shape::param_type *p
                                                                      args.d_trial_vel,
                                                                      args.d_trial_move_type,
                                                                      args.d_reject_out_of_cell,
-                                                                     args.d_reject_out,
                                                                      params
                                                                 );
         }
@@ -370,7 +366,6 @@ void hpmc_gen_moves(const hpmc_args_t& args, const typename Shape::param_type *p
                                                                      args.d_trial_vel,
                                                                      args.d_trial_move_type,
                                                                      args.d_reject_out_of_cell,
-                                                                     args.d_reject_out,
                                                                      params
                                                                 );
         }
@@ -410,7 +405,6 @@ void hpmc_update_pdata(const hpmc_update_args_t& args, const typename Shape::par
             args.d_trial_vel,
             args.d_trial_move_type,
             args.d_reject,
-            args.d_reject_out_of_cell,
             params);
         }
     }

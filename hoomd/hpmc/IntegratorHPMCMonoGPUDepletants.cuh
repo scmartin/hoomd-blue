@@ -741,8 +741,6 @@ void depletants_launcher(const hpmc_args_t& args, const hpmc_implicit_args_t& im
             assert(args.d_reject_out_of_cell);
             assert(implicit_args.d_implicit_count);
             assert(args.d_update_order_by_ptl);
-            assert(args.d_reject_in);
-            assert(args.d_reject_out);
             assert(implicit_args.d_n_depletants);
 
             hipLaunchKernelGGL((kernel::hpmc_insert_depletants<Shape, launch_bounds_nonzero*MIN_BLOCK_SIZE, pairwise>),
@@ -777,8 +775,8 @@ void depletants_launcher(const hpmc_args_t& args, const hpmc_implicit_args_t& im
                                  implicit_args.depletant_idx,
                                  implicit_args.d_implicit_count + idev*implicit_args.implicit_counters_pitch,
                                  args.d_update_order_by_ptl,
-                                 args.d_reject_in,
-                                 args.d_reject_out,
+                                 0,//args.d_reject_in,
+                                 0,//args.d_reject_out,
                                  implicit_args.repulsive,
                                  range.first,
                                  max_depletant_queue_size,

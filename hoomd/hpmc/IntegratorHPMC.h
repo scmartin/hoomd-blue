@@ -59,11 +59,19 @@ struct hpmc_patch_args_t
                 const Scalar _r_cut_patch,
                 const Scalar *_d_additive_cutoff,
                 const unsigned int *_d_update_order_by_ptl,
-                const unsigned int *_d_reject_in,
-                unsigned int *_d_reject_out,
                 const Scalar *_d_charge,
                 const Scalar *_d_diameter,
                 const unsigned int *_d_reject_out_of_cell,
+                unsigned int *_d_n_inequality,
+                unsigned int *_d_inequality_literals,
+                const unsigned int _maxn_inequality,
+                unsigned int *_d_req_n_inequality,
+                double *_d_coeff,
+                double *_d_rhs,
+                unsigned int *_d_n_literals,
+                unsigned int *_d_literals,
+                const unsigned int _maxn_literals,
+                unsigned int *_d_req_n_literals,
                 const GPUPartition& _gpu_partition)
                 : d_postype(_d_postype),
                   d_orientation(_d_orientation),
@@ -85,11 +93,19 @@ struct hpmc_patch_args_t
                   r_cut_patch(_r_cut_patch),
                   d_additive_cutoff(_d_additive_cutoff),
                   d_update_order_by_ptl(_d_update_order_by_ptl),
-                  d_reject_in(_d_reject_in),
-                  d_reject_out(_d_reject_out),
                   d_charge(_d_charge),
                   d_diameter(_d_diameter),
                   d_reject_out_of_cell(_d_reject_out_of_cell),
+                  d_n_inequality(_d_n_inequality),
+                  d_inequality_literals(_d_inequality_literals),
+                  maxn_inequality(_maxn_inequality),
+                  d_req_n_inequality(_d_req_n_inequality),
+                  d_coeff(_d_coeff),
+                  d_rhs(_d_rhs),
+                  d_n_literals(_d_n_literals),
+                  d_literals(_d_literals),
+                  maxn_literals(_maxn_literals),
+                  d_req_n_literals(_d_req_n_literals),
                   gpu_partition(_gpu_partition)
         { }
 
@@ -113,11 +129,19 @@ struct hpmc_patch_args_t
     const Scalar r_cut_patch;        //!< Global cutoff radius
     const Scalar *d_additive_cutoff; //!< Additive contribution to cutoff per type
     const unsigned int *d_update_order_by_ptl; //!< Order of the update sequence
-    const unsigned int *d_reject_in; //!< Previous reject flags
-    unsigned int *d_reject_out;      //!< New reject flags
     const Scalar *d_charge;          //!< Particle charges
     const Scalar *d_diameter;        //!< Particle diameters
     const unsigned int *d_reject_out_of_cell;   //!< Flag if a particle move has been rejected a priori
+    unsigned int *d_n_inequality;    //!< Number of inequalities per particle
+    unsigned int *d_inequality_literals; //!< Literals of the Pseudo-Boolean constraints
+    const unsigned int maxn_inequality; //!< Max number of literals per particle
+    unsigned int *d_req_n_inequality; //!< Requested max of literals per particle
+    double *d_coeff;                  //!< Coefficients of the Boolean variables in the linear inequalities
+    double *d_rhs;                    //!< Right-hand sides of inequalities (>= rhs)
+    unsigned int *d_n_literals;       //!< Number of literals per particle
+    unsigned int *d_literals;         //!< Literals of the conjunctive normal form
+    const unsigned int maxn_literals; //!< Max number of literals per particle
+    unsigned int *d_req_n_literals;   //!< Requested number of literals per particle
     const GPUPartition& gpu_partition; //!< split particles among GPUs
     };
 #endif

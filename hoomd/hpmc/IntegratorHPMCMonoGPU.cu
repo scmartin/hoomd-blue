@@ -4,6 +4,8 @@
 #include "IntegratorHPMCMonoGPUTypes.cuh"
 #include "hoomd/GPUPartition.cuh"
 
+#include <cfloat>
+
 namespace hpmc
 {
 namespace gpu
@@ -118,6 +120,7 @@ __global__ void complete_cnf(
     unsigned int *d_literals,
     unsigned int *d_n_literals,
     const unsigned int maxn_literals,
+    unsigned int *d_req_n_literals,
     unsigned int *d_req_n_inequality,
     unsigned int *d_inequality_literals,
     unsigned int *d_n_inequality,
@@ -136,7 +139,7 @@ __global__ void complete_cnf(
 
     unsigned int nlit = min(maxn_literals,d_n_literals[tidx]);
 
-    // count the number of new terms
+    // count the number of new terms from propositional clauses
     unsigned int n_new = 0;
     bool have_unit_clause = false;
     bool is_unit_clause = true;
@@ -161,43 +164,140 @@ __global__ void complete_cnf(
     if (have_unit_clause)
         return;
 
-    unsigned int nlit_inequality = d_n_inequality[tidx];
-
-    if (nlit_inequality + n_new + 2 > maxn_inequality)
-        atomicMax(d_req_n_inequality, nlit_inequality + n_new + 2);
-    else
+    // count the number of new terms from inequalities
+    unsigned int nlit_inequality = min(d_n_inequality[tidx],maxn_inequality);
+    unsigned int n_new_inequality = 0;
+    is_unit_clause = true;
+    double max_rhs = 0.0;
+    double new_rhs;
+    bool first = true;
+    for (unsigned int i = 0; i < nlit_inequality; ++i)
         {
-        // add the new clause as a Pseudo-Boolean constraint
-        d_n_inequality[tidx] += n_new + 2; // account for !x_j and marker terms
+        unsigned int l = d_inequality_literals[tidx*maxn_inequality+i];
 
-        unsigned int n = nlit_inequality;
-        d_inequality_literals[tidx*maxn_inequality+n] = (tidx << 1) | 1; // !x_i
-        d_coeff[tidx*maxn_inequality+n] = 1.0;
-        d_rhs[tidx*maxn_inequality+n] = 1.0;
-        n++;
-
-        for (unsigned int i = 0; i < nlit; ++i)
+        if (l == SAT_sentinel)
             {
-            unsigned int l = d_literals[tidx*maxn_literals+i];
-
-            if (l == SAT_sentinel)
+            if (new_rhs < 0)
                 {
-                continue;
+                have_unit_clause = true;
+                break;
                 }
 
-            // add the negated literal to the clause
-            unsigned int v = l >> 1;
-            unsigned int b = l & 1;
-
-            if (v != tidx)
-                {
-                d_inequality_literals[tidx*maxn_inequality+n] = (v << 1) | (b ^ 1);
-                d_coeff[tidx*maxn_inequality+n] = 1.0;
-                n++;
-                }
+            max_rhs = max(max_rhs, new_rhs);
+            first = true;
+            continue;
             }
 
-        d_inequality_literals[tidx*maxn_inequality+n] = SAT_sentinel;
+        if (first)
+            {
+            new_rhs = -d_rhs[tidx*maxn_inequality+i];
+            }
+
+        first = false;
+
+        double c = d_coeff[tidx*maxn_inequality+i];
+        if (l != (tidx << 1)) // != x_i ?
+            {
+            n_new_inequality++;
+            new_rhs += c;
+            }
+        }
+
+    if (have_unit_clause)
+        return;
+
+    if (max_rhs == 0)
+        {
+        // add propositional clauses for !x_i
+        if (nlit + n_new + 2 > maxn_literals)
+            atomicMax(d_req_n_literals, nlit + n_new + 2);
+        else
+            {
+            d_n_literals[tidx] += n_new + 2; // account for !x_j and marker terms
+            unsigned int n = nlit;
+            d_literals[tidx*maxn_literals+(n++)] = (tidx << 1) | 1; // !x_i
+
+            for (unsigned int i = 0; i < nlit; ++i)
+                {
+                unsigned int l = d_literals[tidx*maxn_literals+i];
+
+                if (l == SAT_sentinel)
+                    {
+                    continue;
+                    }
+
+                // add the negated literal to the clause
+                unsigned int v = l >> 1;
+                unsigned int b = l & 1;
+
+                if (l != (tidx << 1))
+                    d_literals[tidx*maxn_literals+(n++)] = (v << 1) | (b ^ 1);
+                }
+
+            d_literals[tidx*maxn_literals+n] = SAT_sentinel;
+            }
+        }
+    else
+        {
+        // add new inequality
+        if (nlit_inequality + n_new + n_new_inequality + 2 > maxn_inequality)
+            atomicMax(d_req_n_inequality, nlit_inequality + n_new + n_new_inequality + 2);
+        else
+            {
+            // add the new clause as a Pseudo-Boolean constraint
+            d_n_inequality[tidx] += n_new + n_new_inequality + 2; // account for !x_i and marker terms
+
+            unsigned int n = nlit_inequality;
+            d_rhs[tidx*maxn_inequality+n] = max_rhs;
+            d_inequality_literals[tidx*maxn_inequality+n] = (tidx << 1) | 1; // !x_i
+            d_coeff[tidx*maxn_inequality+n] = max_rhs;
+            n++;
+
+            for (unsigned int i = 0; i < nlit_inequality; ++i)
+                {
+                unsigned int l = d_inequality_literals[tidx*maxn_inequality+i];
+
+                if (l == SAT_sentinel)
+                    {
+                    continue;
+                    }
+
+                unsigned int v = l >> 1;
+                unsigned int b = l & 1;
+
+                if (l != (tidx << 1))
+                    {
+                    d_inequality_literals[tidx*maxn_inequality+n] = (v << 1) | (b ^ 1);
+                    double c = d_coeff[tidx*maxn_inequality+i];
+        //            d_coeff[tidx*maxn_inequality+n] = c*max_rhs/rhs; // scale coefficient
+                    d_coeff[tidx*maxn_inequality+n] = c;
+                    n++;
+                    }
+                }
+
+            // add negated literals from logical propositions
+            for (unsigned int i = 0; i < nlit; ++i)
+                {
+                unsigned int l = d_literals[tidx*maxn_literals+i];
+
+                if (l == SAT_sentinel)
+                    {
+                    continue;
+                    }
+
+                // add the negated literal to the clause
+                unsigned int v = l >> 1;
+                unsigned int b = l & 1;
+
+                if (l != (tidx << 1))
+                    {
+                    d_inequality_literals[tidx*maxn_inequality+n] = (v << 1) | (b ^ 1);
+                    d_coeff[tidx*maxn_inequality+n] = max_rhs;
+                    n++;
+                    }
+                }
+            d_inequality_literals[tidx*maxn_inequality+n] = SAT_sentinel;
+            }
         }
     }
 
@@ -278,6 +378,7 @@ void complete_cnf(
     unsigned int *d_literals,
     unsigned int *d_n_literals,
     const unsigned int maxn_literals,
+    unsigned int *d_req_n_literals,
     unsigned int *d_req_n_inequality,
     unsigned int *d_inequality_literals,
     unsigned int *d_n_inequality,
@@ -292,6 +393,7 @@ void complete_cnf(
         d_literals,
         d_n_literals,
         maxn_literals,
+        d_req_n_literals,
         d_req_n_inequality,
         d_inequality_literals,
         d_n_inequality,

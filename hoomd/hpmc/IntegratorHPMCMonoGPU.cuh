@@ -64,8 +64,6 @@ __global__ void hpmc_narrow_phase(const Scalar4 *d_postype,
                            const Index2D overlap_idx,
                            const typename Shape::param_type *d_params,
                            const unsigned int *d_update_order_by_ptl,
-                           const unsigned int *d_reject_in,
-                           unsigned int *d_reject_out,
                            const unsigned int *d_reject_out_of_cell,
                            const unsigned int max_extra_bytes,
                            const unsigned int max_queue_size,
@@ -511,8 +509,6 @@ void narrow_phase_launcher(const hpmc_args_t& args, const typename Shape::param_
             assert(args.d_excell_size);
             assert(args.d_counters);
             assert(args.d_check_overlaps);
-            assert(args.d_reject_in);
-            assert(args.d_reject_out);
             assert(args.d_reject_out_of_cell);
 
             hipLaunchKernelGGL((hpmc_narrow_phase<Shape, launch_bounds_nonzero*MIN_BLOCK_SIZE>),
@@ -521,7 +517,7 @@ void narrow_phase_launcher(const hpmc_args_t& args, const typename Shape::param_
                 args.d_trial_move_type, args.d_excell_idx, args.d_excell_size, args.excli,
                 args.d_counters+idev*args.counters_pitch, args.num_types,
                 args.box, args.ghost_width, args.cell_dim, args.ci, args.N, args.d_check_overlaps,
-                args.overlap_idx, params, args.d_update_order_by_ptl, args.d_reject_in, args.d_reject_out, args.d_reject_out_of_cell,
+                args.overlap_idx, params, args.d_update_order_by_ptl, args.d_reject_out_of_cell,
                 max_extra_bytes, max_queue_size, range.first, nwork,
                 args.d_literals, args.d_n_literals, args.max_n_literals, args.d_req_n_literals);
             }
