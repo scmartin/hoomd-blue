@@ -1471,10 +1471,23 @@ bool UpdaterMuVT<Shape>::tryInsertParticle(unsigned int timestep, unsigned int t
     {
     // do we have to compute energetic contribution?
     auto patch = m_mc->getPatchInteraction();
+    auto external = m_mc->getExternalField();
 
     lnboltzmann = Scalar(0.0);
-
     unsigned int overlap = 0;
+    auto& params = m_mc->getParams();
+    Shape shape(orientation, params[type]);
+    
+    if (external)
+    {
+        unsigned int placeholder = 0;
+        lnboltzmann += external->energydiff(placeholder, pos, shape, pos, shape);
+        if (lnboltzmann)
+        {
+            overlap = 1;
+            return !overlap;
+        } 
+    }
 
     bool is_local = true;
     #ifdef ENABLE_MPI
@@ -1493,7 +1506,6 @@ bool UpdaterMuVT<Shape>::tryInsertParticle(unsigned int timestep, unsigned int t
         // get some data structures from the integrator
         auto& image_list = m_mc->updateImageList();
         const unsigned int n_images = image_list.size();
-        auto& params = m_mc->getParams();
 
         const Index2D& overlap_idx = m_mc->getOverlapIndexer();
 
@@ -1518,7 +1530,6 @@ bool UpdaterMuVT<Shape>::tryInsertParticle(unsigned int timestep, unsigned int t
             ArrayHandle<unsigned int> h_overlaps(m_mc->getInteractionMatrix(), access_location::host, access_mode::read);
 
             // read in the current position and orientation
-            Shape shape(orientation, params[type]);
 
             for (unsigned int cur_image = 0; cur_image < n_images; cur_image++)
                 {

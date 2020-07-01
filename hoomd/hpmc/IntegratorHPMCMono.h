@@ -160,6 +160,11 @@ class IntegratorHPMCMono : public IntegratorHPMC
             m_external = external;
             this->m_external_base = (ExternalField*)external.get();
             }
+        
+        std::shared_ptr< ExternalFieldMono<Shape> > getExternalField()
+            {
+            return m_external;
+            }
 
         //! Get a list of logged quantities
         virtual std::vector< std::string > getProvidedLogQuantities();
