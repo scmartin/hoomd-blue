@@ -76,7 +76,6 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
     const GlobalArray< Scalar4 >& net_force = m_pdata->getNetForce();
 
     ArrayHandle<Scalar4> d_pos(m_pdata->getPositions(), access_location::device, access_mode::readwrite);
-    ArrayHandle<Scalar4> d_vel(m_pdata->getVelocities(), access_location::device, access_mode::readwrite);
     ArrayHandle<int3> d_image(m_pdata->getImages(), access_location::device, access_mode::readwrite);
 
     ArrayHandle<Scalar4> d_net_force(net_force, access_location::device, access_mode::read);
@@ -125,7 +124,6 @@ void TwoStepRATTLEBDGPU::integrateStepOne(unsigned int timestep)
 
     // perform the update on the GPU
     gpu_rattle_brownian_step_one(d_pos.data,
-                          d_vel.data,
                           d_image.data,
                           box,
                           d_diameter.data,
@@ -177,6 +175,7 @@ void TwoStepRATTLEBDGPU::IncludeRATTLEForce(unsigned int timestep)
     const GlobalArray<Scalar>&  net_virial = m_pdata->getNetVirial();
 
     ArrayHandle<Scalar4> d_pos(m_pdata->getPositions(), access_location::device, access_mode::read);
+    ArrayHandle<Scalar4> d_vel(m_pdata->getVelocities(), access_location::device, access_mode::readwrite);
     ArrayHandle<Scalar4> d_net_force(net_force, access_location::device, access_mode::readwrite);
     ArrayHandle<Scalar3> d_f_brownian(m_f_brownian, access_location::device, access_mode::readwrite);
     ArrayHandle<Scalar> d_net_virial(net_virial, access_location::device, access_mode::readwrite);
@@ -216,6 +215,7 @@ void TwoStepRATTLEBDGPU::IncludeRATTLEForce(unsigned int timestep)
 
     // perform the update on the GPU
     gpu_include_rattle_force_bd(d_pos.data,
+                          d_vel.data,
                           d_net_force.data,
                           d_f_brownian.data,
                           d_net_virial.data,

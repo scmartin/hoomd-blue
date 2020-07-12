@@ -150,14 +150,6 @@ void TwoStepRATTLEBD::integrateStepOne(unsigned int timestep)
         // particles may have been moved slightly outside the box by the above steps, wrap them back into place
         box.wrap(h_pos.data[j], h_image.data[j]);
 
-        // draw a new random velocity for particle j
-        Scalar mass =  h_vel.data[j].w;
-        Scalar sigma = fast::sqrt(currentTemp/mass);
-        NormalDistribution<Scalar> norm(sigma);
-        h_vel.data[j].x = norm(rng);
-        h_vel.data[j].y = norm(rng);
-        h_vel.data[j].z = norm(rng);
-
         // rotational random force and orientation quaternion updates
         if (m_aniso)
             {
@@ -285,6 +277,32 @@ void TwoStepRATTLEBD::IncludeRATTLEForce(unsigned int timestep)
 
 	    Scalar3 normal = m_manifold->derivative(next_pos);
 
+        // draw a new random velocity for particle j
+        Scalar mass =  h_vel.data[j].w;
+        Scalar sigma1 = fast::sqrt(currentTemp/mass);
+        NormalDistribution<Scalar> norm(sigma1);
+
+        Scalar3 vec_rand;
+        vec_rand.x =norm(rng);
+        vec_rand.y =norm(rng);
+        vec_rand.z =norm(rng);
+
+        Scalar norm_normal = 1.0/fast::sqrt(normal.x*normal.x+normal.y*normal.y+normal.z*normal.z);
+
+        normal.x = norm_normal*normal.x;
+        normal.y = norm_normal*normal.y;
+        normal.z = norm_normal*normal.z;
+
+        Scalar rand_norm = vec_rand.x*normal.x+ vec_rand.y*normal.y + vec_rand.z*normal.z;
+        vec_rand.x -= rand_norm*normal.x;
+        vec_rand.y -= rand_norm*normal.y;
+        vec_rand.z -= rand_norm*normal.z;
+
+        h_vel.data[j].x = vec_rand.x;
+        h_vel.data[j].y = vec_rand.y;
+        h_vel.data[j].z = vec_rand.z;
+
+
         Scalar rx, ry, rz, coeff;
 
         if(currentTemp > 0)
@@ -371,6 +389,7 @@ void TwoStepRATTLEBD::IncludeRATTLEForce(unsigned int timestep)
 	    h_f_brownian.data[group_idx].x = Fr_x;
 	    h_f_brownian.data[group_idx].y = Fr_y;
 	    h_f_brownian.data[group_idx].z = Fr_z;
+
         }
     }
 

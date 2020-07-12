@@ -28,7 +28,6 @@ inline __device__ Scalar maxNorm(Scalar3 vec, Scalar resid)
 
 //! Takes the second half-step forward in the Langevin integration on a group of particles with
 /*! \param d_pos array of particle positions and types
-    \param d_vel array of particle positions and masses
     \param d_image array of particle images
     \param box simulation box
     \param d_diameter array of particle diameters
@@ -61,7 +60,6 @@ inline __device__ Scalar maxNorm(Scalar3 vec, Scalar resid)
 */
 extern "C" __global__
 void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
-                                  Scalar4 *d_vel,
                                   int3 *d_image,
                                   const BoxDim box,
                                   const Scalar *d_diameter,
@@ -125,7 +123,6 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
         unsigned int idx = d_rtag[tag];
 
         Scalar4 postype = d_pos[idx];
-        Scalar4 vel = d_vel[idx];
         Scalar4 net_force = d_net_force[idx];
         Scalar3 brownian_force = d_f_brownian[tag];
         int3 image = d_image[idx];
@@ -160,17 +157,8 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
 // particles may have been moved slightly outside the box by the above steps, wrap them back into place
         box.wrap(postype, image);
 
-        // draw a new random velocity for particle j
-        Scalar mass = vel.w;
-        Scalar sigma = fast::sqrt(T/mass);
-        NormalDistribution<Scalar> norm(sigma);
-        vel.x = norm(rng);
-        vel.y = norm(rng);
-        vel.z = norm(rng);
-
         // write out data
         d_pos[idx] = postype;
-        d_vel[idx] = vel;
         d_image[idx] = image;
 
         // rotational random force and orientation quaternion updates
@@ -267,7 +255,6 @@ void gpu_rattle_brownian_step_one_kernel(Scalar4 *d_pos,
     This is just a driver for gpu_brownian_step_one_kernel(), see it for details.
 */
 cudaError_t gpu_rattle_brownian_step_one(Scalar4 *d_pos,
-                                  Scalar4 *d_vel,
                                   int3 *d_image,
                                   const BoxDim& box,
                                   const Scalar *d_diameter,
@@ -305,7 +292,6 @@ cudaError_t gpu_rattle_brownian_step_one(Scalar4 *d_pos,
         // run the kernel
         gpu_rattle_brownian_step_one_kernel<<< grid, threads, (unsigned int)(sizeof(Scalar)*rattle_bd_args.n_types + sizeof(Scalar3)*rattle_bd_args.n_types)>>>
                                     (d_pos,
-                                     d_vel,
                                      d_image,
                                      box,
                                      d_diameter,
@@ -338,6 +324,7 @@ cudaError_t gpu_rattle_brownian_step_one(Scalar4 *d_pos,
 
 extern "C" __global__
 void gpu_include_rattle_force_bd_kernel(const Scalar4 *d_pos,
+                                  Scalar4 *d_vel,
                                   Scalar4 *d_net_force,
                                   Scalar3 *d_f_brownian,
                                   Scalar *d_net_virial,
@@ -387,6 +374,7 @@ void gpu_include_rattle_force_bd_kernel(const Scalar4 *d_pos,
         unsigned int idx = d_rtag[tag];
 
         Scalar4 postype = d_pos[idx];
+        Scalar4 vel = d_vel[idx];
         Scalar4 net_force = d_net_force[idx];
         Scalar3 brownian_force = d_f_brownian[tag];
 
@@ -417,11 +405,30 @@ void gpu_include_rattle_force_bd_kernel(const Scalar4 *d_pos,
         RandomGenerator rng(RNGIdentifier::TwoStepBD, seed, tag, timestep);
 
         
-	    Scalar3 next_pos;
-	    next_pos.x = postype.x;
-	    next_pos.y = postype.y;
-	    next_pos.z = postype.z;
+	Scalar3 next_pos;
+	next_pos.x = postype.x;
+	next_pos.y = postype.y;
+	next_pos.z = postype.z;
         Scalar3 normal = manifold.evalNormal(next_pos);
+
+        // draw a new random velocity for particle j
+        Scalar mass = vel.w;
+        Scalar sigma = fast::sqrt(T/mass);
+        NormalDistribution<Scalar> norm(sigma);
+        vel.x = norm(rng);
+        vel.y = norm(rng);
+        vel.z = norm(rng);
+
+        Scalar norm_normal = 1.0/fast::sqrt(normal.x*normal.x+normal.y*normal.y+normal.z*normal.z);
+
+        normal.x = norm_normal*normal.x;
+        normal.y = norm_normal*normal.y;
+        normal.z = norm_normal*normal.z;
+
+        Scalar rand_norm = vel.x*normal.x+ vel.y*normal.y + vel.z*normal.z;
+        vel.x -= rand_norm*normal.x;
+        vel.y -= rand_norm*normal.y;
+        vel.z -= rand_norm*normal.z;
 
         Scalar rx, ry, rz, coeff;
 
@@ -518,10 +525,13 @@ void gpu_include_rattle_force_bd_kernel(const Scalar4 *d_pos,
         d_net_virial[4*net_virial_pitch+idx] = virial4;
         d_net_virial[5*net_virial_pitch+idx] = virial5;
 
+        d_vel[idx] = vel;
+
         }
     }
 
 cudaError_t gpu_include_rattle_force_bd(const Scalar4 *d_pos,
+                                  Scalar4 *d_vel,
                                   Scalar4 *d_net_force,
                                   Scalar3 *d_f_brownian,
                                   Scalar *d_net_virial,
@@ -553,6 +563,7 @@ cudaError_t gpu_include_rattle_force_bd(const Scalar4 *d_pos,
         // run the kernel
         gpu_include_rattle_force_bd_kernel<<< grid, threads, (unsigned int)(sizeof(Scalar)*rattle_bd_args.n_types + sizeof(Scalar3)*rattle_bd_args.n_types)>>>
                                     (d_pos,
+                                     d_vel,
                                      d_net_force,
                                      d_f_brownian,
                                      d_net_virial,

@@ -31,7 +31,6 @@ struct rattle_bd_step_one_args
 
 //! Kernel driver for the first part of the Brownian update called by TwoStepRATTLEBDGPU
 cudaError_t gpu_rattle_brownian_step_one(Scalar4 *d_pos,
-                                  Scalar4 *d_vel,
                                   int3 *d_image,
                                   const BoxDim &box,
                                   const Scalar *d_diameter,
@@ -54,6 +53,7 @@ cudaError_t gpu_rattle_brownian_step_one(Scalar4 *d_pos,
 
 //! Kernel driver for the first part of the Brownian update called by TwoStepRATTLEBDGPU
 cudaError_t gpu_include_rattle_force_bd(const Scalar4 *d_pos,
+                                  Scalar4 *d_vel,
                                   Scalar4 *d_net_force,
                                   Scalar3 *d_f_brownian,
                                   Scalar *d_net_virial,

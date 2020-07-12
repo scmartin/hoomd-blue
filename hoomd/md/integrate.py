@@ -1767,28 +1767,28 @@ class brownian_rattle(_integration_method):
         if not hoomd.context.exec_conf.isCUDAEnabled():
             self.cpp_method = _md.TwoStepRATTLEBD(hoomd.context.current.system_definition,
                                    group.cpp_group,
-				   manifold.cpp_manifold,
+                                   manifold.cpp_manifold,
                                    kT.cpp_variant,
                                    seed,
                                    use_lambda,
                                    float(dscale),
                                    noiseless_t,
                                    noiseless_r,
-				   eta);
+                                   eta);
         else:
             if (manifold.__class__.__name__ == "tpms" or manifold.__class__.__name__ == "plane" or manifold.__class__.__name__ == "sphere" ):
                      self.cpp_method = _md.TwoStepRATTLEBDGPU(hoomd.context.current.system_definition,
                                    group.cpp_group,
-				   manifold.cpp_manifold,
+                                   manifold.cpp_manifold,
                                    kT.cpp_variant,
                                    seed,
                                    use_lambda,
                                    float(dscale),
                                    noiseless_t,
                                    noiseless_r,
-				   eta);
-                else:
-                     raise RuntimeError("Manifold constraint is not accepted (currently only accepts gyroid, plane and sphere for GPU)")
+                                   eta);
+            else:
+                raise RuntimeError("Manifold constraint is not accepted (currently only accepts gyroid, plane and sphere for GPU)")
 
         self.cpp_method.validateGroup()
 

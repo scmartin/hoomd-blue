@@ -23,7 +23,7 @@ FlatManifold::FlatManifold(std::shared_ptr<SystemDefinition> sysdef,
                                Scalar shift)
   : Manifold(sysdef), m_shift(shift) 
        {
-    m_exec_conf->msg->notice(5) << "Constructing FlatManifold" << endl;
+    m_exec_conf->msg->notice(5) << "Constructing FlatManifold " << surf << endl;
 
     if( surf == "XY" || surf == "YX" ){ 
 	xy = true;
@@ -35,13 +35,13 @@ FlatManifold::FlatManifold(std::shared_ptr<SystemDefinition> sysdef,
 		xz = true;
 		m_surf = 5;
 	}
-    else
-    { 
-	if( surf == "YZ" || surf == "ZY" ){ 
+        else
+        { 
+	   if( surf == "YZ" || surf == "ZY" ){ 
 		yz = true;
 		m_surf = 6;
-	}
-    }
+	  }
+        }
     }
 
  }
